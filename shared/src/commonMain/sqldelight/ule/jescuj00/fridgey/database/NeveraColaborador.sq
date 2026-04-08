@@ -1,0 +1,31 @@
+CREATE TABLE IF NOT EXISTS NeveraColaborador (
+    id_nevera TEXT NOT NULL,
+    id_usuario TEXT NOT NULL,
+    fecha_union INTEGER NOT NULL,  -- Unix timestamp (seconds)
+    PRIMARY KEY (id_nevera, id_usuario),
+    FOREIGN KEY (id_nevera) REFERENCES Nevera(id) ON DELETE CASCADE,
+    FOREIGN KEY (id_usuario) REFERENCES Usuario(id) ON DELETE CASCADE
+);
+
+-- Check current collaborator count before inserting (max 4 users per fridge including owner)
+selectByNevera:
+SELECT * FROM NeveraColaborador WHERE id_nevera = ?;
+
+selectCountByNevera:
+SELECT COUNT(*) FROM NeveraColaborador WHERE id_nevera = ?;
+
+insert:
+INSERT INTO NeveraColaborador (id_nevera, id_usuario, fecha_union)
+VALUES (?, ?, ?);
+
+delete:
+DELETE FROM NeveraColaborador WHERE id_nevera = ? AND id_usuario = ?;
+
+deleteAllByNevera:
+DELETE FROM NeveraColaborador WHERE id_nevera = ?;
+
+selectUsuariosByNevera:
+SELECT u.*
+FROM NeveraColaborador nc
+INNER JOIN Usuario u ON nc.id_usuario = u.id
+WHERE nc.id_nevera = ?;

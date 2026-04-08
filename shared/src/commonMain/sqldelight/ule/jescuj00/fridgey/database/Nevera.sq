@@ -1,0 +1,32 @@
+CREATE TABLE IF NOT EXISTS Nevera (
+    id TEXT NOT NULL PRIMARY KEY,
+    nombre TEXT NOT NULL,
+    id_propietario TEXT NOT NULL,
+    fecha_creacion INTEGER NOT NULL,  -- Unix timestamp (seconds)
+    FOREIGN KEY (id_propietario) REFERENCES Usuario(id) ON DELETE CASCADE
+);
+
+selectAll:
+SELECT * FROM Nevera;
+
+-- Returns all fridges accessible to a user (owned + collaborated)
+selectByUsuario:
+SELECT DISTINCT n.*
+FROM Nevera n
+LEFT JOIN NeveraColaborador nc ON n.id = nc.id_nevera
+WHERE n.id_propietario = :usuarioId
+   OR nc.id_usuario = :usuarioId
+ORDER BY n.fecha_creacion DESC;
+
+selectById:
+SELECT * FROM Nevera WHERE id = ?;
+
+insert:
+INSERT INTO Nevera (id, nombre, id_propietario, fecha_creacion)
+VALUES (?, ?, ?, ?);
+
+updateNombre:
+UPDATE Nevera SET nombre = ? WHERE id = ?;
+
+deleteById:
+DELETE FROM Nevera WHERE id = ?;

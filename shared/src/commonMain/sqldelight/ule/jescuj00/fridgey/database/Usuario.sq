@@ -1,0 +1,21 @@
+CREATE TABLE IF NOT EXISTS Usuario (
+    id TEXT NOT NULL PRIMARY KEY,
+    email TEXT NOT NULL,
+    nombre TEXT NOT NULL,
+    proveedor TEXT NOT NULL,  -- 'google' or 'apple'
+    foto_url TEXT,
+    fecha_creacion INTEGER NOT NULL  -- Unix timestamp (seconds)
+);
+
+selectAll:
+SELECT * FROM Usuario;
+
+selectById:
+SELECT * FROM Usuario WHERE id = ?;
+
+insert:
+INSERT OR REPLACE INTO Usuario (id, email, nombre, proveedor, foto_url, fecha_creacion)
+VALUES (?, ?, ?, ?, ?, ?);
+
+deleteById:
+DELETE FROM Usuario WHERE id = ?;

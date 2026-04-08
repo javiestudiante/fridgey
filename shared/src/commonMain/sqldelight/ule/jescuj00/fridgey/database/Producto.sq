@@ -1,0 +1,53 @@
+CREATE TABLE IF NOT EXISTS Producto (
+    id TEXT NOT NULL PRIMARY KEY,
+    id_nevera TEXT NOT NULL,
+    codigo_barras TEXT,
+    nombre TEXT NOT NULL,
+    categoria TEXT NOT NULL,
+    fecha_caducidad INTEGER NOT NULL,  -- Unix timestamp (seconds, midnight UTC of expiry day)
+    fecha_registro INTEGER NOT NULL,   -- Unix timestamp (seconds)
+    imagen_url TEXT,
+    FOREIGN KEY (id_nevera) REFERENCES Nevera(id) ON DELETE CASCADE
+);
+
+-- All products in a fridge, soonest to expire first
+selectByNevera:
+SELECT * FROM Producto
+WHERE id_nevera = ?
+ORDER BY fecha_caducidad ASC;
+
+-- Products with days remaining calculated (negative = already expired)
+selectByNeveraWithDaysRemaining:
+SELECT *,
+    CAST((fecha_caducidad - :ahora) / 86400 AS INTEGER) AS dias_restantes
+FROM Producto
+WHERE id_nevera = :neveraId
+ORDER BY fecha_caducidad ASC;
+
+-- Search by name or category (case-insensitive)
+searchInNevera:
+SELECT * FROM Producto
+WHERE id_nevera = :neveraId
+  AND (LOWER(nombre) LIKE LOWER(:query) OR LOWER(categoria) LIKE LOWER(:query))
+ORDER BY fecha_caducidad ASC;
+
+selectById:
+SELECT * FROM Producto WHERE id = ?;
+
+insert:
+INSERT INTO Producto (id, id_nevera, codigo_barras, nombre, categoria, fecha_caducidad, fecha_registro, imagen_url)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+
+update:
+UPDATE Producto
+SET nombre = ?, categoria = ?, fecha_caducidad = ?, imagen_url = ?
+WHERE id = ?;
+
+deleteById:
+DELETE FROM Producto WHERE id = ?;
+
+deleteByNevera:
+DELETE FROM Producto WHERE id_nevera = ?;
+
+countByNevera:
+SELECT COUNT(*) FROM Producto WHERE id_nevera = ?;

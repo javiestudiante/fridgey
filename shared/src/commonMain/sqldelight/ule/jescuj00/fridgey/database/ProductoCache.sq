@@ -1,0 +1,22 @@
+CREATE TABLE IF NOT EXISTS ProductoCache (
+    codigo_barras TEXT NOT NULL PRIMARY KEY,
+    nombre TEXT NOT NULL,
+    marca TEXT,
+    categoria TEXT NOT NULL,
+    imagen_url TEXT,
+    fecha_consulta INTEGER NOT NULL  -- Unix timestamp (seconds) — for cache invalidation
+);
+
+selectByCodigoBarras:
+SELECT * FROM ProductoCache WHERE codigo_barras = ?;
+
+insert:
+INSERT OR REPLACE INTO ProductoCache (codigo_barras, nombre, marca, categoria, imagen_url, fecha_consulta)
+VALUES (?, ?, ?, ?, ?, ?);
+
+deleteByCodigoBarras:
+DELETE FROM ProductoCache WHERE codigo_barras = ?;
+
+-- Purge entries older than a given timestamp (cache invalidation)
+deleteExpired:
+DELETE FROM ProductoCache WHERE fecha_consulta < ?;

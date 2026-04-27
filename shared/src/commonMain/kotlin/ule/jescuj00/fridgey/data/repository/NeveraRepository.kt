@@ -3,18 +3,20 @@ package ule.jescuj00.fridgey.data.repository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.datetime.Clock
-import ule.jescuj00.fridgey.database.FoodSaverDatabase
+import ule.jescuj00.fridgey.database.NeveraColaboradorQueries
+import ule.jescuj00.fridgey.database.NeveraQueries
+import ule.jescuj00.fridgey.database.ProductoQueries
 import ule.jescuj00.fridgey.domain.model.Nevera
 import ule.jescuj00.fridgey.domain.model.Proveedor
 import ule.jescuj00.fridgey.domain.model.Usuario
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 
-class NeveraRepository(private val database: FoodSaverDatabase) {
-
-    private val neveraQueries = database.neveraQueries
-    private val colaboradorQueries = database.neveraColaboradorQueries
-    private val productoQueries = database.productoQueries
+class NeveraRepository(
+    private val neveraQueries: NeveraQueries,
+    private val colaboradorQueries: NeveraColaboradorQueries,
+    private val productoQueries: ProductoQueries
+) {
 
     /**
      * Returns all fridges the user owns or collaborates in.

@@ -1,0 +1,25 @@
+package ule.jescuj00.fridgey.di
+
+import org.koin.core.module.Module
+import org.koin.dsl.module
+import ule.jescuj00.fridgey.domain.scanner.TextRecognizer
+import ule.jescuj00.fridgey.domain.usecase.AddColaboradorUseCase
+import ule.jescuj00.fridgey.domain.usecase.CreateNeveraUseCase
+import ule.jescuj00.fridgey.domain.usecase.RemoveColaboradorUseCase
+import ule.jescuj00.fridgey.domain.usecase.ScanExpirationDateUseCase
+
+/**
+ * Provides domain use cases as factories — they are stateless and short-lived,
+ * so a fresh instance per resolution costs nothing and avoids accidental shared state.
+ *
+ * [TextRecognizer] is provided here too (as a single) since it owns native resources
+ * that should be reused across calls.
+ */
+val useCaseModule: Module = module {
+    single { TextRecognizer() }
+
+    factory { CreateNeveraUseCase(get()) }
+    factory { AddColaboradorUseCase(get(), get()) }
+    factory { RemoveColaboradorUseCase(get()) }
+    factory { ScanExpirationDateUseCase(get()) }
+}

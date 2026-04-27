@@ -2,13 +2,11 @@ package ule.jescuj00.fridgey.data.repository
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import ule.jescuj00.fridgey.database.FoodSaverDatabase
+import ule.jescuj00.fridgey.database.UsuarioQueries
 import ule.jescuj00.fridgey.domain.model.Proveedor
 import ule.jescuj00.fridgey.domain.model.Usuario
 
-class UsuarioRepository(private val database: FoodSaverDatabase) {
-
-    private val queries = database.usuarioQueries
+class UsuarioRepository(private val queries: UsuarioQueries) {
 
     suspend fun getUsuarioById(id: String): Usuario? = withContext(Dispatchers.Default) {
         queries.selectById(id).executeAsOneOrNull()?.toDomain()

@@ -11,13 +11,11 @@ import kotlinx.datetime.LocalDate
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.atStartOfDayIn
 import kotlinx.datetime.toLocalDateTime
-import ule.jescuj00.fridgey.database.FoodSaverDatabase
+import ule.jescuj00.fridgey.database.ProductoQueries
 import ule.jescuj00.fridgey.domain.model.Categoria
 import ule.jescuj00.fridgey.domain.model.Producto
 
-class ProductoRepository(private val database: FoodSaverDatabase) {
-
-    private val queries = database.productoQueries
+class ProductoRepository(private val queries: ProductoQueries) {
 
     // --- Reactive queries (Flow) ---
 

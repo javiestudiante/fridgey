@@ -32,6 +32,7 @@ kotlin {
         }
         androidMain.dependencies {
             implementation(libs.sqldelight.android.driver)
+            implementation(libs.mlkit.text.recognition)
         }
         iosMain.dependencies {
             implementation(libs.sqldelight.native.driver)

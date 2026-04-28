@@ -27,8 +27,8 @@ kotlin {
         commonMain.dependencies {
             implementation(libs.sqldelight.runtime)
             implementation(libs.sqldelight.coroutines)
-            implementation(libs.kotlinx.datetime)
-            implementation(libs.kotlinx.coroutines.core)
+            api(libs.kotlinx.datetime)
+            api(libs.kotlinx.coroutines.core)
             api(libs.koin.core)
         }
         androidMain.dependencies {

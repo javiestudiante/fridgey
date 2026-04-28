@@ -10,6 +10,7 @@ import org.koin.core.context.startKoin
 import ule.jescuj00.fridgey.data.repository.NeveraRepository
 import ule.jescuj00.fridgey.di.androidModule
 import ule.jescuj00.fridgey.di.sharedModules
+import ule.jescuj00.fridgey.di.viewModelModule
 
 class FridgeyApplication : Application(), KoinComponent {
 
@@ -21,7 +22,7 @@ class FridgeyApplication : Application(), KoinComponent {
         startKoin {
             androidLogger()
             androidContext(this@FridgeyApplication)
-            modules(sharedModules() + androidModule())
+            modules(sharedModules() + androidModule() + viewModelModule())
         }
 
         // --- Temporary verification (remove once UI work begins) ---

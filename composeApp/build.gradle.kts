@@ -20,6 +20,9 @@ kotlin {
             implementation(libs.compose.uiToolingPreview)
             implementation(libs.androidx.activity.compose)
             implementation(libs.koin.androidx.compose)
+            implementation(libs.androidx.navigation.compose)
+            implementation(libs.coil.compose)
+            implementation(compose.materialIconsExtended)
         }
         commonMain.dependencies {
             implementation(libs.compose.runtime)

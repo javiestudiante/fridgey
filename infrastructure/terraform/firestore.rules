@@ -1,0 +1,59 @@
+// =============================================================================
+// firestore.rules
+//
+// Initial security rules for the Fridgey Firestore database.
+//
+// Model in plain language:
+//   - usuarios/{uid}     -> only that user can read or write their document.
+//   - neveras/{id}       -> the owner has full control; collaborators can read.
+//   - neveras/.../productos/{id}
+//                        -> owner and collaborators can read AND write.
+//
+// TODOs (revisit once auth is fully integrated and the data model stabilizes):
+//   - Validate the SHAPE of incoming documents (request.resource.data.keys(),
+//     required fields, types, length limits) so the client can't write
+//     arbitrary attributes.
+//   - Restrict which fields collaborators can mutate on neveras (e.g. they
+//     should not be able to add themselves to `colaboradores` or change
+//     `idPropietario`).
+//   - Add rate-limit-friendly checks (e.g. cap on number of products per
+//     fridge) once we know real usage patterns.
+//   - Consider a separate rule path for invitations / pending collaborators
+//     instead of writing directly to `colaboradores`.
+// =============================================================================
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Users can only read/write their own user document
+    match /usuarios/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // Fridges: owner has full access, collaborators can read products
+    match /neveras/{neveraId} {
+      allow read: if request.auth != null && (
+        resource.data.idPropietario == request.auth.uid ||
+        request.auth.uid in resource.data.colaboradores
+      );
+
+      allow create: if request.auth != null &&
+        request.resource.data.idPropietario == request.auth.uid;
+
+      allow update: if request.auth != null &&
+        resource.data.idPropietario == request.auth.uid;
+
+      allow delete: if request.auth != null &&
+        resource.data.idPropietario == request.auth.uid;
+
+      // Products inside a fridge: collaborators can read and write
+      match /productos/{productoId} {
+        allow read, write: if request.auth != null && (
+          get(/databases/$(database)/documents/neveras/$(neveraId)).data.idPropietario == request.auth.uid ||
+          request.auth.uid in get(/databases/$(database)/documents/neveras/$(neveraId)).data.colaboradores
+        );
+      }
+    }
+  }
+}

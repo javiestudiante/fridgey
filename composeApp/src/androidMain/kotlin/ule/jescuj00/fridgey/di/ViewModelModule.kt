@@ -5,6 +5,7 @@ import org.koin.core.module.dsl.viewModel
 import org.koin.dsl.module
 import ule.jescuj00.fridgey.ui.screens.add_producto.AddProductoViewModel
 import ule.jescuj00.fridgey.ui.screens.create_nevera.CreateNeveraViewModel
+import ule.jescuj00.fridgey.ui.screens.login.LoginViewModel
 import ule.jescuj00.fridgey.ui.screens.nevera_detail.NeveraDetailViewModel
 import ule.jescuj00.fridgey.ui.screens.nevera_list.NeveraListViewModel
 
@@ -17,4 +18,5 @@ fun viewModelModule(): Module = module {
     viewModel { CreateNeveraViewModel(get()) }
     viewModel { NeveraDetailViewModel(get(), get()) }
     viewModel { AddProductoViewModel(get()) }
+    viewModel { LoginViewModel(get()) }
 }

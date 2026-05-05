@@ -1,6 +1,7 @@
 package ule.jescuj00.fridgey.ui.navigation
 
 sealed class Screen(val route: String) {
+    data object Login : Screen("login")
     data object NeveraList : Screen("nevera_list")
     data object CreateNevera : Screen("create_nevera")
 

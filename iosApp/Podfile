@@ -1,0 +1,24 @@
+# Podfile for the Fridgey iOS app.
+#
+# After modifying this file run:
+#   cd iosApp
+#   pod install --repo-update
+#   open iosApp.xcworkspace   # NOT iosApp.xcodeproj
+#
+# These pods are linked from Swift only (the Swift bridges in iosApp/Auth/).
+# The Kotlin shared framework calls into Firebase via the gitlive Kotlin SDK,
+# whose iOS implementation references the Firebase iOS symbols that get
+# resolved at link time when the app is built against these pods.
+
+platform :ios, '15.0'
+
+target 'iosApp' do
+  use_frameworks!
+
+  # Firebase Authentication — backs everything in shared/AuthRepository.
+  pod 'FirebaseAuth'
+
+  # Native Google Sign-In SDK — used by GoogleSignInBridge.swift to
+  # produce an idToken that we hand to Firebase.
+  pod 'GoogleSignIn'
+end

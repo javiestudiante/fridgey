@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
@@ -24,6 +25,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -44,6 +46,7 @@ fun NeveraListScreen(
     currentUserId: String,
     onNavigateToCreate: () -> Unit,
     onNavigateToNevera: (String) -> Unit,
+    onSignOut: () -> Unit,
     viewModel: NeveraListViewModel = koinViewModel()
 ) {
     val state by viewModel.uiState.collectAsState()
@@ -54,7 +57,17 @@ fun NeveraListScreen(
 
     Scaffold(
         topBar = {
-            CenterAlignedTopAppBar(title = { Text("Mis Neveras") })
+            CenterAlignedTopAppBar(
+                title = { Text("Mis Neveras") },
+                actions = {
+                    IconButton(onClick = onSignOut) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.Logout,
+                            contentDescription = "Cerrar sesión"
+                        )
+                    }
+                }
+            )
         },
         floatingActionButton = {
             FloatingActionButton(onClick = onNavigateToCreate) {

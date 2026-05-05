@@ -6,6 +6,10 @@ plugins {
     alias(libs.plugins.androidApplication)
     alias(libs.plugins.composeMultiplatform)
     alias(libs.plugins.composeCompiler)
+    // Reads composeApp/google-services.json at build time and generates
+    // resources (default_web_client_id, FirebaseInitProvider) so Firebase
+    // initializes automatically on Android.
+    alias(libs.plugins.googleServices)
 }
 
 kotlin {
@@ -14,7 +18,7 @@ kotlin {
             jvmTarget.set(JvmTarget.JVM_11)
         }
     }
-    
+
     sourceSets {
         androidMain.dependencies {
             implementation(libs.compose.uiToolingPreview)
@@ -23,6 +27,11 @@ kotlin {
             implementation(libs.androidx.navigation.compose)
             implementation(libs.coil.compose)
             implementation(compose.materialIconsExtended)
+            // Credential Manager is needed here too, because the Compose UI
+            // resolves the GoogleSignInHelper that uses it.
+            implementation(libs.androidx.credentials)
+            implementation(libs.androidx.credentials.play.services.auth)
+            implementation(libs.googleid)
         }
         commonMain.dependencies {
             implementation(libs.compose.runtime)
@@ -71,4 +80,3 @@ android {
 dependencies {
     debugImplementation(libs.compose.uiTooling)
 }
-

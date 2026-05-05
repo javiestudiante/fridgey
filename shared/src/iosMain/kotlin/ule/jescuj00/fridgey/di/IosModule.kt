@@ -2,13 +2,22 @@ package ule.jescuj00.fridgey.di
 
 import org.koin.core.module.Module
 import org.koin.dsl.module
+import ule.jescuj00.fridgey.data.auth.AppleSignInHelper
+import ule.jescuj00.fridgey.data.auth.AuthStateBinder
+import ule.jescuj00.fridgey.data.auth.GoogleSignInHelper
 import ule.jescuj00.fridgey.data.db.DatabaseDriverFactory
 
 /**
  * Supplies iOS-only bindings — the [DatabaseDriverFactory] for iOS
  * needs no constructor parameters (the SQLite native driver opens
  * a database file in the app sandbox).
+ *
+ * The sign-in helpers on iOS delegate to Swift bridges set from
+ * `iOSApp.swift`; their Kotlin classes have no constructor args.
  */
 fun iosModule(): Module = module {
     single { DatabaseDriverFactory() }
+    single { GoogleSignInHelper() }
+    single { AppleSignInHelper() }
+    factory { AuthStateBinder(get()) }   // factory: each Swift consumer gets its own scope
 }

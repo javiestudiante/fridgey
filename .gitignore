@@ -17,3 +17,14 @@ captures
 !*.xcworkspace/contents.xcworkspacedata
 **/xcshareddata/WorkspaceSettings.xcsettings
 node_modules/
+
+# Firebase config files (sensitive, downloaded manually)
+composeApp/google-services.json
+iosApp/iosApp/GoogleService-Info.plist
+
+# CocoaPods — `pod install` artifacts.
+# Podfile.lock is intentionally committed (pins exact pod versions).
+iosApp/Pods/
+
+# Apple Sign-In private key — store in a secret manager, never commit.
+*.p8

@@ -1,19 +1,84 @@
 package ule.jescuj00.fridgey.ui.navigation
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import kotlinx.coroutines.launch
+import org.koin.compose.koinInject
+import ule.jescuj00.fridgey.domain.model.auth.AuthState
+import ule.jescuj00.fridgey.domain.usecase.auth.ObserveAuthStateUseCase
+import ule.jescuj00.fridgey.domain.usecase.auth.SignOutUseCase
 import ule.jescuj00.fridgey.ui.screens.add_producto.AddProductoScreen
 import ule.jescuj00.fridgey.ui.screens.create_nevera.CreateNeveraScreen
+import ule.jescuj00.fridgey.ui.screens.login.LoginScreen
 import ule.jescuj00.fridgey.ui.screens.nevera_detail.NeveraDetailScreen
 import ule.jescuj00.fridgey.ui.screens.nevera_list.NeveraListScreen
 
 @Composable
-fun FridgeyNavigation(currentUserId: String) {
+fun FridgeyNavigation() {
+    val observeAuthStateUseCase: ObserveAuthStateUseCase = koinInject()
+    val signOutUseCase: SignOutUseCase = koinInject()
+
+    val authState by observeAuthStateUseCase()
+        .collectAsState(initial = AuthState.Loading)
+
+    when (val state = authState) {
+        AuthState.Loading -> SplashLoading()
+        AuthState.Unauthenticated, is AuthState.Error -> {
+            // Treat error states as unauthenticated — the LoginScreen will
+            // surface a snackbar if the user retries and it fails again.
+            UnauthenticatedGraph()
+        }
+        is AuthState.Authenticated -> {
+            AuthenticatedGraph(
+                currentUserId = state.user.uid,
+                signOutUseCase = signOutUseCase
+            )
+        }
+    }
+}
+
+@Composable
+private fun SplashLoading() {
+    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        CircularProgressIndicator()
+    }
+}
+
+@Composable
+private fun UnauthenticatedGraph() {
     val navController = rememberNavController()
+    NavHost(navController = navController, startDestination = Screen.Login.route) {
+        composable(Screen.Login.route) {
+            // No explicit navigation on success — the auth state flow will
+            // trigger a recomposition into AuthenticatedGraph automatically.
+            LoginScreen(onSignedIn = { /* handled by auth state observer */ })
+        }
+    }
+}
+
+@Composable
+private fun AuthenticatedGraph(
+    currentUserId: String,
+    signOutUseCase: SignOutUseCase
+) {
+    val navController = rememberNavController()
+    val coroutineScope = rememberCoroutineScope()
+
+    val onSignOut: () -> Unit = {
+        coroutineScope.launch { signOutUseCase() }
+    }
 
     NavHost(navController = navController, startDestination = Screen.NeveraList.route) {
         composable(Screen.NeveraList.route) {
@@ -22,7 +87,8 @@ fun FridgeyNavigation(currentUserId: String) {
                 onNavigateToCreate = { navController.navigate(Screen.CreateNevera.route) },
                 onNavigateToNevera = { neveraId ->
                     navController.navigate(Screen.NeveraDetail.createRoute(neveraId))
-                }
+                },
+                onSignOut = onSignOut
             )
         }
 

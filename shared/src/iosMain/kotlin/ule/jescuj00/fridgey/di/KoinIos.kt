@@ -4,6 +4,8 @@ import org.koin.core.component.KoinComponent
 import org.koin.core.component.get
 import org.koin.core.context.startKoin
 import ule.jescuj00.fridgey.data.auth.AuthStateBinder
+import ule.jescuj00.fridgey.data.binders.NeveraListBinder
+import ule.jescuj00.fridgey.data.binders.ProductoListBinder
 import ule.jescuj00.fridgey.data.repository.AuthRepository
 import ule.jescuj00.fridgey.data.repository.NeveraRepository
 import ule.jescuj00.fridgey.data.repository.ProductoRepository
@@ -54,3 +56,9 @@ fun getObserveAuthStateUseCase(): ObserveAuthStateUseCase = KoinAccessor.get()
 
 /** Fresh binder per call — each Swift subscriber owns its coroutine scope. */
 fun getAuthStateBinder(): AuthStateBinder = KoinAccessor.get()
+
+/** Fresh binder per call — same rationale as [getAuthStateBinder]. */
+fun getProductoListBinder(): ProductoListBinder = KoinAccessor.get()
+
+/** Fresh binder per call — same rationale as [getAuthStateBinder]. */
+fun getNeveraListBinder(): NeveraListBinder = KoinAccessor.get()

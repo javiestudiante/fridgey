@@ -52,7 +52,7 @@ fun NeveraListScreen(
     val state by viewModel.uiState.collectAsState()
 
     LaunchedEffect(currentUserId) {
-        viewModel.loadNeveras(currentUserId)
+        viewModel.observeNeveras(currentUserId)
     }
 
     Scaffold(
@@ -84,7 +84,7 @@ fun NeveraListScreen(
                 state.isLoading -> LoadingState()
                 state.error != null -> ErrorState(
                     message = state.error!!,
-                    onRetry = { viewModel.loadNeveras(currentUserId) }
+                    onRetry = { viewModel.observeNeveras(currentUserId) }
                 )
                 state.neveras.isEmpty() -> EmptyState(onCreatePressed = onNavigateToCreate)
                 else -> NeveraList(

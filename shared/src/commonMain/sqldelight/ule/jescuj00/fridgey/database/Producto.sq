@@ -51,3 +51,11 @@ DELETE FROM Producto WHERE id_nevera = ?;
 
 countByNevera:
 SELECT COUNT(*) FROM Producto WHERE id_nevera = ?;
+
+-- Used purely as a SQLDelight Flow trigger: any insert/update/delete on
+-- Producto invalidates this query and re-emits the Flow that watches it.
+-- Lets observers across other tables (e.g. observeNeverasByUsuario, which
+-- needs to recompute per-fridge product counts) react to ANY product
+-- change, not just to changes inside a single fridge.
+countAll:
+SELECT COUNT(*) FROM Producto;

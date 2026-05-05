@@ -1,6 +1,12 @@
 package ule.jescuj00.fridgey.data.repository
 
+import app.cash.sqldelight.coroutines.asFlow
+import app.cash.sqldelight.coroutines.mapToList
+import app.cash.sqldelight.coroutines.mapToOne
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.withContext
 import kotlinx.datetime.Clock
 import ule.jescuj00.fridgey.database.NeveraColaboradorQueries
@@ -31,6 +37,36 @@ class NeveraRepository(
                 )
             }
         }
+
+    /**
+     * Reactive variant of [getNeverasByUsuario]: emits a fresh list whenever
+     * either the Nevera table OR the Producto table changes — the latter
+     * matters because each fridge carries its own product count.
+     *
+     * The Producto-side trigger is `countAll()`, an unfiltered query whose
+     * sole purpose is to invalidate on any insert/update/delete. SQLDelight
+     * re-emits the Flow on table change regardless of whether the value
+     * itself changed.
+     */
+    fun observeNeverasByUsuario(usuarioId: String): Flow<List<Nevera>> {
+        val neverasFlow = neveraQueries.selectByUsuario(usuarioId)
+            .asFlow()
+            .mapToList(Dispatchers.Default)
+
+        val productosTrigger = productoQueries.countAll()
+            .asFlow()
+            .mapToOne(Dispatchers.Default)
+
+        return combine(neverasFlow, productosTrigger) { rows, _ ->
+            rows.map { row ->
+                row.toDomain(
+                    esPropietario = row.id_propietario == usuarioId,
+                    numeroProductos = productoQueries.countByNevera(row.id)
+                        .executeAsOne().toInt()
+                )
+            }
+        }.flowOn(Dispatchers.Default)
+    }
 
     suspend fun getNeveraById(neveraId: String, currentUserId: String): Nevera? =
         withContext(Dispatchers.Default) {

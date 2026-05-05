@@ -39,9 +39,12 @@ final class AuthSession: ObservableObject {
     }
 
     private func apply(_ kotlinState: AuthState) {
-        if let authed = kotlinState as? AuthStateAuthenticated {
+        // K/N exports the sealed-class subtypes as nested Swift types via
+        // `swift_name("AuthState.Authenticated")` etc. — use the dotted
+        // form here, NOT the flat ObjC name (`AuthStateAuthenticated`).
+        if let authed = kotlinState as? AuthState.Authenticated {
             state = .authenticated(authed.user)
-        } else if kotlinState is AuthStateLoading {
+        } else if kotlinState is AuthState.Loading {
             state = .loading
         } else {
             // Unauthenticated and Error both lead to the login screen.
@@ -51,7 +54,9 @@ final class AuthSession: ObservableObject {
 
     func signOut() {
         let useCase = KoinIosKt.getSignOutUseCase()
-        useCase.invoke { _, _ in /* the auth-state flow will pick up the change */ }
+        // SignOutUseCase returns Unit, so the Swift completion handler
+        // takes only `(Error?) -> Void` — one argument, not two.
+        useCase.invoke { _ in /* the auth-state flow will pick up the change */ }
     }
 
     deinit {

@@ -1,6 +1,7 @@
 package ule.jescuj00.fridgey.domain.usecase.auth
 
 import ule.jescuj00.fridgey.data.auth.GoogleSignInHelper
+import ule.jescuj00.fridgey.data.auth.GoogleSignInLauncher
 import ule.jescuj00.fridgey.data.repository.AuthRepository
 import ule.jescuj00.fridgey.domain.model.auth.AuthUser
 
@@ -14,8 +15,8 @@ class SignInWithGoogleUseCase(
     private val helper: GoogleSignInHelper,
     private val authRepository: AuthRepository
 ) {
-    suspend operator fun invoke(): AuthUser {
-        val idToken = helper.launchSignIn()
-        return authRepository.signInWithGoogleCredential(idToken)
+    suspend operator fun invoke(launcher: GoogleSignInLauncher): AuthUser {
+        val tokens = helper.launchSignIn(launcher)
+        return authRepository.signInWithGoogleCredential(tokens)
     }
 }

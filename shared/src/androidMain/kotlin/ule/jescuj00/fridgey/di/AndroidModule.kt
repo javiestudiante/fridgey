@@ -23,9 +23,10 @@ const val GOOGLE_WEB_CLIENT_ID_QUALIFIER = "googleWebClientId"
 fun androidModule(): Module = module {
     single { DatabaseDriverFactory(androidContext()) }
 
+    // No Context here: GoogleSignInHelper takes the Activity per call (via
+    // the launcher param) so it doesn't hold a long-lived Activity reference.
     single {
         GoogleSignInHelper(
-            context = androidContext(),
             serverClientId = get(named(GOOGLE_WEB_CLIENT_ID_QUALIFIER))
         )
     }

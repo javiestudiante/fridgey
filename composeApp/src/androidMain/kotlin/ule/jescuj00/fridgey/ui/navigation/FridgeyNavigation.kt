@@ -6,6 +6,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -30,8 +31,12 @@ fun FridgeyNavigation() {
     val observeAuthStateUseCase: ObserveAuthStateUseCase = koinInject()
     val signOutUseCase: SignOutUseCase = koinInject()
 
-    val authState by observeAuthStateUseCase()
-        .collectAsState(initial = AuthState.Loading)
+    // Memoize the Flow so we don't rebuild it on every recomposition.
+    // Without this, `collectAsState` re-subscribes on every tick and the
+    // upstream emits a fresh initial value, causing a Loading↔Authenticated
+    // recomposition loop (visible parpadeo).
+    val authStateFlow = remember(observeAuthStateUseCase) { observeAuthStateUseCase() }
+    val authState by authStateFlow.collectAsState(initial = AuthState.Loading)
 
     when (val state = authState) {
         AuthState.Loading -> SplashLoading()

@@ -1,5 +1,6 @@
 package ule.jescuj00.fridgey.ui.screens.login
 
+import androidx.activity.compose.LocalActivity
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -37,6 +38,9 @@ fun LoginScreen(
 ) {
     val state by viewModel.uiState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
+    // Credential Manager needs an Activity context. In a Compose host
+    // mounted in MainActivity this is never null at runtime.
+    val activity = LocalActivity.current
 
     LaunchedEffect(state.signedInUserId) {
         state.signedInUserId?.let { uid -> onSignedIn(uid) }
@@ -79,8 +83,8 @@ fun LoginScreen(
                 Spacer(Modifier.height(48.dp))
 
                 Button(
-                    onClick = { viewModel.onGoogleSignInClicked() },
-                    enabled = !state.isLoading,
+                    onClick = { activity?.let(viewModel::onGoogleSignInClicked) },
+                    enabled = !state.isLoading && activity != null,
                     modifier = Modifier.fillMaxWidth(),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = MaterialTheme.colorScheme.primary

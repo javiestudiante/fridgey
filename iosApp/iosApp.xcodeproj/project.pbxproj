@@ -8,9 +8,11 @@
 
 /* Begin PBXBuildFile section */
 		1A0DFEAC60169271B44D82BB /* Pods_iosApp.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = CF345C4687E2F9793BFE523F /* Pods_iosApp.framework */; };
+		3B0FC6662FA9FA0500B253C4 /* libsqlite3.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = 3B0FC6652FA9F9F700B253C4 /* libsqlite3.tbd */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		3B0FC6652FA9F9F700B253C4 /* libsqlite3.tbd */ = {isa = PBXFileReference; lastKnownFileType = "sourcecode.text-based-dylib-definition"; name = libsqlite3.tbd; path = usr/lib/libsqlite3.tbd; sourceTree = SDKROOT; };
 		555931F5F25BD04D6D650FCA /* Fridgey.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Fridgey.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		6C79952199E50F923A811EE6 /* Pods-iosApp.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-iosApp.release.xcconfig"; path = "Target Support Files/Pods-iosApp/Pods-iosApp.release.xcconfig"; sourceTree = "<group>"; };
 		85253ACD5648F3843983E57B /* Pods-iosApp.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-iosApp.debug.xcconfig"; path = "Target Support Files/Pods-iosApp/Pods-iosApp.debug.xcconfig"; sourceTree = "<group>"; };
@@ -48,6 +50,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				3B0FC6662FA9FA0500B253C4 /* libsqlite3.tbd in Frameworks */,
 				1A0DFEAC60169271B44D82BB /* Pods_iosApp.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -86,6 +89,7 @@
 		A4A087B7E782E55CF9BB3910 /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
+				3B0FC6652FA9F9F700B253C4 /* libsqlite3.tbd */,
 				CF345C4687E2F9793BFE523F /* Pods_iosApp.framework */,
 			);
 			name = Frameworks;

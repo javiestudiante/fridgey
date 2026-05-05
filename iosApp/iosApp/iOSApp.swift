@@ -1,5 +1,6 @@
 import SwiftUI
 import FirebaseCore
+import GoogleSignIn
 import Shared
 
 @main
@@ -22,6 +23,12 @@ struct iOSApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
+                // Google Sign-In falls back to the URL-scheme path if the
+                // user has the Google app installed; without this handler
+                // that flow hangs after picking the account.
+                .onOpenURL { url in
+                    GIDSignIn.sharedInstance.handle(url)
+                }
         }
     }
 }

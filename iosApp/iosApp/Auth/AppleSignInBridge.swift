@@ -18,21 +18,33 @@ final class AppleSignInBridge: NSObject {
     private var rawNonce: String?
     private var onSuccess: ((String, String) -> Void)?
     private var onError: ((String) -> Void)?
+    private var onCancel: (() -> Void)?
 
     static func register() {
-        AppleSignInHelper.companion.iosAppleSignInBridge = { onSuccess, onError in
+        AppleSignInHelper.companion.iosAppleSignInBridge = { onSuccess, onError, onCancel in
+            // Kotlin lambdas are exported with `KotlinUnit` return type.
+            // Swift's implicit Void coercion does not apply when *passing*
+            // such a closure as a value, only when invoking it. We wrap
+            // each one in a literal closure that calls it (the return value
+            // is then discarded in statement position).
             DispatchQueue.main.async {
-                AppleSignInBridge.shared.start(onSuccess: onSuccess, onError: onError)
+                AppleSignInBridge.shared.start(
+                    onSuccess: { idToken, rawNonce in onSuccess(idToken, rawNonce) },
+                    onError: { message in onError(message) },
+                    onCancel: { onCancel() }
+                )
             }
         }
     }
 
     private func start(
         onSuccess: @escaping (String, String) -> Void,
-        onError: @escaping (String) -> Void
+        onError: @escaping (String) -> Void,
+        onCancel: @escaping () -> Void
     ) {
         self.onSuccess = onSuccess
         self.onError = onError
+        self.onCancel = onCancel
 
         let nonce = Self.randomNonceString()
         self.rawNonce = nonce
@@ -75,6 +87,13 @@ final class AppleSignInBridge: NSObject {
         let hashed = SHA256.hash(data: inputData)
         return hashed.map { String(format: "%02x", $0) }.joined()
     }
+
+    private func clearCallbacks() {
+        self.onSuccess = nil
+        self.onError = nil
+        self.onCancel = nil
+        self.rawNonce = nil
+    }
 }
 
 extension AppleSignInBridge: ASAuthorizationControllerDelegate {
@@ -82,11 +101,7 @@ extension AppleSignInBridge: ASAuthorizationControllerDelegate {
         controller: ASAuthorizationController,
         didCompleteWithAuthorization authorization: ASAuthorization
     ) {
-        defer {
-            self.onSuccess = nil
-            self.onError = nil
-            self.rawNonce = nil
-        }
+        defer { clearCallbacks() }
         guard let credential = authorization.credential as? ASAuthorizationAppleIDCredential else {
             onError?("Unexpected Apple credential type")
             return
@@ -107,10 +122,12 @@ extension AppleSignInBridge: ASAuthorizationControllerDelegate {
         controller: ASAuthorizationController,
         didCompleteWithError error: Error
     ) {
-        defer {
-            self.onSuccess = nil
-            self.onError = nil
-            self.rawNonce = nil
+        defer { clearCallbacks() }
+        // Cancellation is reported through a dedicated callback so the UI
+        // can swallow it without inspecting localized error strings.
+        if let asError = error as? ASAuthorizationError, asError.code == .canceled {
+            onCancel?()
+            return
         }
         onError?(error.localizedDescription)
     }

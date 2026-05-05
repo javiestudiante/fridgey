@@ -7,6 +7,12 @@ import Shared
 /// for why). Kotlin/Native exposes `suspend fun invoke(): AuthUser` to
 /// Swift as a completion-handler accepting `(AuthUser?, Error?)` — we
 /// surface that shape directly here.
+///
+/// Cancellation: the Swift bridges (Google, Apple) report user-cancellations
+/// through a dedicated `onCancel` callback that the Kotlin side translates
+/// into [SignInCancelledException]. The use case rethrows it; we recognise
+/// it by class type in `handle(...)` and silence it without showing an
+/// alert.
 @MainActor
 final class LoginViewModel: ObservableObject {
 
@@ -21,7 +27,9 @@ final class LoginViewModel: ObservableObject {
         isLoading = true
         errorMessage = nil
 
-        signInWithGoogle.invoke { [weak self] user, error in
+        // The launcher is a no-op on iOS (the Swift bridge drives the UI),
+        // but the shared `invoke` signature requires an instance.
+        signInWithGoogle.invoke(launcher: GoogleSignInLauncher()) { [weak self] user, error in
             Task { @MainActor [weak self] in
                 self?.handle(user: user, error: error)
             }
@@ -45,11 +53,13 @@ final class LoginViewModel: ObservableObject {
     /// emits the new authenticated user.
     private func handle(user: AuthUser?, error: Error?) {
         isLoading = false
-        if let error = error {
-            let message = error.localizedDescription
-            // Suppress user-cancellations silently.
-            if message.lowercased().contains("cancel") { return }
-            errorMessage = message
-        }
+        guard let error = error else { return }
+
+        // Kotlin throws `SignInCancelledException` on user cancellation;
+        // the K/N exporter surfaces it in Swift as a class conforming to
+        // `Error`, so a plain `is` check is enough.
+        if error is SignInCancelledException { return }
+
+        errorMessage = error.localizedDescription
     }
 }

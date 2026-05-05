@@ -9,20 +9,30 @@ import Shared
 ///
 /// `register()` installs the bridge into `GoogleSignInHelper.companion`;
 /// once installed, calls to `GoogleSignInHelper.launchSignIn()` from
-/// commonMain trigger `signIn(with:)` here.
+/// commonMain trigger `signIn(...)` here.
 enum GoogleSignInBridge {
 
     static func register() {
-        GoogleSignInHelper.companion.iosGoogleSignInBridge = { onSuccess, onError in
+        GoogleSignInHelper.companion.iosGoogleSignInBridge = { onSuccess, onError, onCancel in
+            // Kotlin lambdas are exported with `KotlinUnit` return type.
+            // Swift's implicit Void coercion does not apply when *passing*
+            // such a closure as a value, only when invoking it. We wrap
+            // each one in a literal closure that calls it (the return value
+            // is then discarded in statement position).
             DispatchQueue.main.async {
-                signIn(onSuccess: onSuccess, onError: onError)
+                signIn(
+                    onSuccess: { idToken, accessToken in onSuccess(idToken, accessToken) },
+                    onError: { message in onError(message) },
+                    onCancel: { onCancel() }
+                )
             }
         }
     }
 
     private static func signIn(
-        onSuccess: @escaping (String) -> Void,
-        onError: @escaping (String) -> Void
+        onSuccess: @escaping (String, String) -> Void,
+        onError: @escaping (String) -> Void,
+        onCancel: @escaping () -> Void
     ) {
         guard let clientID = FirebaseApp.app()?.options.clientID else {
             onError("FirebaseApp.clientID is nil — is GoogleService-Info.plist included in the target?")
@@ -39,6 +49,14 @@ enum GoogleSignInBridge {
 
         GIDSignIn.sharedInstance.signIn(withPresenting: presentingVC) { result, error in
             if let error = error {
+                // Cancellation is reported through a dedicated callback so
+                // the UI doesn't have to inspect localized strings.
+                let nsError = error as NSError
+                if nsError.domain == kGIDSignInErrorDomain,
+                   nsError.code == GIDSignInError.canceled.rawValue {
+                    onCancel()
+                    return
+                }
                 onError(error.localizedDescription)
                 return
             }
@@ -46,7 +64,11 @@ enum GoogleSignInBridge {
                 onError("Google Sign-In did not return an idToken")
                 return
             }
-            onSuccess(idToken)
+            // GIDGoogleUser.accessToken is non-optional on a successful sign-in.
+            // gitlive's GoogleAuthProvider.credential on iOS requires a
+            // non-null accessToken, so we surface it alongside the idToken.
+            let accessToken = result!.user.accessToken.tokenString
+            onSuccess(idToken, accessToken)
         }
     }
 

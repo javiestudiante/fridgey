@@ -8,7 +8,7 @@ import dev.gitlive.firebase.auth.OAuthProvider
 import dev.gitlive.firebase.auth.auth
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.onStart
+import ule.jescuj00.fridgey.data.auth.GoogleSignInTokens
 import ule.jescuj00.fridgey.domain.model.Proveedor
 import ule.jescuj00.fridgey.domain.model.Usuario
 import ule.jescuj00.fridgey.domain.model.auth.AuthState
@@ -30,22 +30,30 @@ class AuthRepository(
     private val usuarioRepository: UsuarioRepository
 ) {
 
-    /** Cold flow of [AuthState]. Emits [AuthState.Loading] up front while the
-     *  Firebase SDK rehydrates the persisted user, then settles on
-     *  [AuthState.Authenticated] / [AuthState.Unauthenticated]. */
+    /** Cold flow of [AuthState]. `authStateChanged` already emits the current
+     *  user (or `null`) on subscribe, so the upstream signal is enough — the
+     *  UI uses `collectAsState(initial = AuthState.Loading)` for the
+     *  pre-emission tick. Avoid `onStart { emit(Loading) }` here: it would
+     *  re-emit Loading on every re-subscription and cause a flicker if the
+     *  collector is restarted. */
     fun observeAuthState(): Flow<AuthState> =
         auth.authStateChanged
             .map<FirebaseUser?, AuthState> { user ->
                 if (user == null) AuthState.Unauthenticated
                 else AuthState.Authenticated(user.toAuthUser(defaultProvider = inferProvider(user)))
             }
-            .onStart { emit(AuthState.Loading) }
 
     fun getCurrentUser(): AuthUser? =
         auth.currentUser?.toAuthUser(defaultProvider = inferProvider(auth.currentUser))
 
-    suspend fun signInWithGoogleCredential(idToken: String): AuthUser {
-        val credential = GoogleAuthProvider.credential(idToken = idToken, accessToken = null)
+    suspend fun signInWithGoogleCredential(tokens: GoogleSignInTokens): AuthUser {
+        // gitlive's iOS implementation rejects a null accessToken even when
+        // an idToken is present; on Android it's accepted. The helper
+        // populates accessToken accordingly per platform.
+        val credential = GoogleAuthProvider.credential(
+            idToken = tokens.idToken,
+            accessToken = tokens.accessToken
+        )
         val result = auth.signInWithCredential(credential)
         val firebaseUser = result.user ?: error("Firebase returned a null user after Google sign-in")
         val authUser = firebaseUser.toAuthUser(defaultProvider = Proveedor.GOOGLE)

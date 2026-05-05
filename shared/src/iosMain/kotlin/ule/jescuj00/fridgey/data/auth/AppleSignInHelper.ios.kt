@@ -10,6 +10,10 @@ import kotlinx.coroutines.suspendCancellableCoroutine
  * hands the *hashed* value to Apple, and surfaces the resulting identity
  * token plus the *raw* nonce — Firebase needs the raw value to validate
  * the token.
+ *
+ * The bridge has three completion lambdas: success, error, and cancel.
+ * Cancellation is reported separately so the UI can silence it without
+ * resorting to fragile string-matching on the error message.
  */
 actual class AppleSignInHelper {
 
@@ -30,6 +34,9 @@ actual class AppleSignInHelper {
                 },
                 { errorMessage ->
                     if (cont.isActive) cont.resumeWithException(Throwable(errorMessage))
+                },
+                {
+                    if (cont.isActive) cont.resumeWithException(SignInCancelledException())
                 }
             )
         }
@@ -37,8 +44,17 @@ actual class AppleSignInHelper {
     companion object {
         /**
          * Set from Swift at app startup (see AppleSignInBridge.swift).
-         * Signature: (onSuccess: (idToken, rawNonce) -> Unit, onError: (message) -> Unit) -> Unit.
+         * Signature:
+         *   (onSuccess: (idToken, rawNonce) -> Unit,
+         *    onError:   (message) -> Unit,
+         *    onCancel:  () -> Unit) -> Unit
          */
-        var iosAppleSignInBridge: ((onSuccess: (String, String) -> Unit, onError: (String) -> Unit) -> Unit)? = null
+        var iosAppleSignInBridge: (
+            (
+                onSuccess: (String, String) -> Unit,
+                onError: (String) -> Unit,
+                onCancel: () -> Unit
+            ) -> Unit
+        )? = null
     }
 }

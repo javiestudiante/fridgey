@@ -7,6 +7,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import ule.jescuj00.fridgey.data.auth.GoogleSignInLauncher
 import ule.jescuj00.fridgey.data.auth.SignInCancelledException
 import ule.jescuj00.fridgey.domain.usecase.auth.SignInWithGoogleUseCase
 
@@ -23,12 +24,12 @@ class LoginViewModel(
     private val _uiState = MutableStateFlow(LoginUiState())
     val uiState: StateFlow<LoginUiState> = _uiState.asStateFlow()
 
-    fun onGoogleSignInClicked() {
+    fun onGoogleSignInClicked(launcher: GoogleSignInLauncher) {
         if (_uiState.value.isLoading) return
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, error = null) }
             try {
-                val user = signInWithGoogleUseCase()
+                val user = signInWithGoogleUseCase(launcher)
                 _uiState.update { it.copy(isLoading = false, signedInUserId = user.uid) }
             } catch (e: SignInCancelledException) {
                 _uiState.update { it.copy(isLoading = false) }   // silent

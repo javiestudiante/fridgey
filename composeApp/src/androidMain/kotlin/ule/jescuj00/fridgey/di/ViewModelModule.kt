@@ -3,6 +3,7 @@ package ule.jescuj00.fridgey.di
 import org.koin.core.module.Module
 import org.koin.core.module.dsl.viewModel
 import org.koin.dsl.module
+import ule.jescuj00.fridgey.ui.scanner.DateScannerViewModel
 import ule.jescuj00.fridgey.ui.screens.add_producto.AddProductoViewModel
 import ule.jescuj00.fridgey.ui.screens.create_nevera.CreateNeveraViewModel
 import ule.jescuj00.fridgey.ui.screens.login.LoginViewModel
@@ -19,4 +20,5 @@ fun viewModelModule(): Module = module {
     viewModel { NeveraDetailViewModel(get(), get()) }
     viewModel { AddProductoViewModel(get()) }
     viewModel { LoginViewModel(get()) }
+    viewModel { DateScannerViewModel(get()) }   // get() resolves ScanExpirationDateUseCase
 }

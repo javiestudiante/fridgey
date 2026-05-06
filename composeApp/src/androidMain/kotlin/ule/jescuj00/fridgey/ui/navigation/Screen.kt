@@ -14,4 +14,12 @@ sealed class Screen(val route: String) {
         const val ARG_NEVERA_ID = "neveraId"
         fun createRoute(neveraId: String) = "add_producto/$neveraId"
     }
+
+    data object DateScanner : Screen("date_scanner")
 }
+
+/**
+ * Saved-state key the scanner writes to and AddProducto reads from when
+ * a date has been picked. Value type: `String` (ISO `yyyy-MM-dd`).
+ */
+const val SCANNED_DATE_KEY = "scanned_date"

@@ -11,6 +11,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
@@ -23,6 +25,9 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -50,7 +55,8 @@ import ule.jescuj00.fridgey.ui.util.formatEs
 fun AddProductoScreen(
     neveraId: String,
     onNavigateBack: () -> Unit,
-    viewModel: AddProductoViewModel = koinViewModel()
+    onScanRequested: () -> Unit,
+    viewModel: AddProductoViewModel = koinViewModel(),
 ) {
     val state by viewModel.uiState.collectAsState()
 
@@ -95,6 +101,23 @@ fun AddProductoScreen(
                 .padding(horizontal = 16.dp, vertical = 16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            // Scan/manual toggle is only shown while the form is pristine
+            // (no field has been touched). Once the user enters any data
+            // — or returns from the scanner — the toggle hides for good
+            // (one-way gate, see AddProductoViewModel.isFormPristine).
+            if (state.isFormPristine) {
+                ScanModeToggle(
+                    selected = state.scanMode,
+                    onSelect = { mode ->
+                        when (mode) {
+                            ScanMode.Scan -> onScanRequested()
+                            ScanMode.Manual -> viewModel.setScanMode(ScanMode.Manual)
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+
             OutlinedTextField(
                 value = state.name,
                 onValueChange = viewModel::onNameChanged,
@@ -208,5 +231,28 @@ private fun FechaCaducidadField(
         ) {
             DatePicker(state = datePickerState)
         }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ScanModeToggle(
+    selected: ScanMode,
+    onSelect: (ScanMode) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    SingleChoiceSegmentedButtonRow(modifier = modifier) {
+        SegmentedButton(
+            selected = selected == ScanMode.Scan,
+            onClick = { onSelect(ScanMode.Scan) },
+            shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2),
+            icon = { Icon(Icons.Default.PhotoCamera, contentDescription = null) },
+        ) { Text("Escanear") }
+        SegmentedButton(
+            selected = selected == ScanMode.Manual,
+            onClick = { onSelect(ScanMode.Manual) },
+            shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
+            icon = { Icon(Icons.Default.Edit, contentDescription = null) },
+        ) { Text("A mano") }
     }
 }

@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -16,11 +17,15 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import kotlinx.coroutines.launch
+import kotlinx.datetime.LocalDate
+import org.koin.androidx.compose.koinViewModel
 import org.koin.compose.koinInject
 import ule.jescuj00.fridgey.domain.model.auth.AuthState
 import ule.jescuj00.fridgey.domain.usecase.auth.ObserveAuthStateUseCase
 import ule.jescuj00.fridgey.domain.usecase.auth.SignOutUseCase
+import ule.jescuj00.fridgey.ui.scanner.DateScannerScreen
 import ule.jescuj00.fridgey.ui.screens.add_producto.AddProductoScreen
+import ule.jescuj00.fridgey.ui.screens.add_producto.AddProductoViewModel
 import ule.jescuj00.fridgey.ui.screens.create_nevera.CreateNeveraScreen
 import ule.jescuj00.fridgey.ui.screens.login.LoginScreen
 import ule.jescuj00.fridgey.ui.screens.nevera_detail.NeveraDetailScreen
@@ -132,9 +137,48 @@ private fun AuthenticatedGraph(
             val neveraId = requireNotNull(
                 backStackEntry.arguments?.getString(Screen.AddProducto.ARG_NEVERA_ID)
             )
+
+            // Resolve the VM at the NavHost level (still scoped per
+            // NavBackStackEntry by Koin). This lets the LaunchedEffect below
+            // call onScannedDateReceived directly, instead of plumbing the
+            // date through the screen as another parameter.
+            val viewModel: AddProductoViewModel = koinViewModel()
+
+            // Receive ISO date string from the scanner via savedStateHandle.
+            val savedStateHandle = backStackEntry.savedStateHandle
+            val scannedDate by savedStateHandle
+                .getStateFlow<String?>(SCANNED_DATE_KEY, null)
+                .collectAsState()
+
+            LaunchedEffect(scannedDate) {
+                val iso = scannedDate ?: return@LaunchedEffect
+                viewModel.onScannedDateReceived(LocalDate.parse(iso))
+                // Critical: clear the saved entry so re-entering this
+                // composable (rotation, process death restoration) does
+                // not re-trigger onScannedDateReceived with a stale value.
+                savedStateHandle[SCANNED_DATE_KEY] = null
+            }
+
             AddProductoScreen(
                 neveraId = neveraId,
-                onNavigateBack = { navController.popBackStack() }
+                viewModel = viewModel,
+                onNavigateBack = { navController.popBackStack() },
+                onScanRequested = { navController.navigate(Screen.DateScanner.route) },
+            )
+        }
+
+        composable(Screen.DateScanner.route) {
+            DateScannerScreen(
+                onDatePicked = { date: LocalDate ->
+                    // Hand the date back to the previous screen (AddProducto)
+                    // as an ISO string. LocalDate's toString() is yyyy-MM-dd.
+                    navController.previousBackStackEntry
+                        ?.savedStateHandle
+                        ?.set(SCANNED_DATE_KEY, date.toString())
+                    navController.popBackStack()
+                },
+                onManualEntry = { navController.popBackStack() },
+                onCancel = { navController.popBackStack() },
             )
         }
     }

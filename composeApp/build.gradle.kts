@@ -32,6 +32,18 @@ kotlin {
             implementation(libs.androidx.credentials)
             implementation(libs.androidx.credentials.play.services.auth)
             implementation(libs.googleid)
+            // CameraX — Android-only OCR scanner UI consumes these directly;
+            // they must NOT leak into shared/commonMain.
+            implementation(libs.androidx.camera.core)
+            implementation(libs.androidx.camera.camera2)
+            implementation(libs.androidx.camera.lifecycle)
+            implementation(libs.androidx.camera.view)
+            // ML Kit — the scanner converts CameraX frames to `InputImage`
+            // before handing them to the shared `TextRecognizer` wrapper.
+            // Already declared as `implementation` in shared/androidMain;
+            // declared here too rather than promoted to `api` in shared,
+            // which would leak ML Kit into commonMain consumers.
+            implementation(libs.mlkit.text.recognition)
         }
         commonMain.dependencies {
             implementation(libs.compose.runtime)
@@ -46,6 +58,12 @@ kotlin {
         }
         commonTest.dependencies {
             implementation(libs.kotlin.test)
+        }
+        // Android-only unit tests: virtual-time scheduler + mockk for
+        // CameraX / ML Kit fakes that can't run on the JVM directly.
+        androidUnitTest.dependencies {
+            implementation(libs.kotlinx.coroutines.test)
+            implementation(libs.mockk)
         }
     }
 }

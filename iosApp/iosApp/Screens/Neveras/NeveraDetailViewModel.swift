@@ -73,40 +73,12 @@ final class NeveraDetailViewModel: ObservableObject {
         }
     }
 
-    func addProducto(name: String, categoria: Categoria, fechaCaducidad: Date) {
-        let trimmed = name.trimmingCharacters(in: .whitespaces)
-        guard !trimmed.isEmpty else {
-            state.error = "El nombre es obligatorio"
-            return
-        }
-        let today = Calendar.current.startOfDay(for: Date())
-        let pickedStart = Calendar.current.startOfDay(for: fechaCaducidad)
-        guard pickedStart >= today else {
-            state.error = "La fecha debe ser hoy o futura"
-            return
-        }
-
-        let producto = Producto(
-            id: UUID().uuidString,
-            idNevera: neveraId,
-            codigoBarras: nil,
-            nombre: trimmed,
-            categoria: categoria,
-            fechaCaducidad: Kotlinx_datetimeLocalDate.from(date: fechaCaducidad),
-            fechaRegistro: Kotlinx_datetimeLocalDate.from(date: Date()),
-            imagenUrl: nil
-        )
-
-        Task { @MainActor [weak self] in
-            guard let self = self else { return }
-            do {
-                try await self.productoRepository.insertProducto(producto: producto)
-                // The Flow will reemit with the new product; no manual reload.
-            } catch {
-                self.state.error = error.localizedDescription
-            }
-        }
-    }
+    // `addProducto` was removed in favour of `AddProductoView` /
+    // `AddProductoViewModel` (in `Screens/Productos/`), which owns the
+    // creation flow end-to-end (validation, save, success signalling). The
+    // VM here keeps the read+delete responsibilities for the products
+    // already in this nevera; the `productoRepository` reference is still
+    // needed by `deleteProducto(_:)` below.
 
     func deleteProducto(_ producto: Producto) {
         Task { @MainActor [weak self] in

@@ -4,6 +4,8 @@
 <dict>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>Para escanear las fechas de caducidad de los productos</string>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>

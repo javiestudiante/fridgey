@@ -11,8 +11,19 @@
 		3B0FC6662FA9FA0500B253C4 /* libsqlite3.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = 3B0FC6652FA9F9F700B253C4 /* libsqlite3.tbd */; };
 /* End PBXBuildFile section */
 
+/* Begin PBXContainerItemProxy section */
+		3B0FC67B2FAC98BF00B253C4 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 5CBA19C80445C2F4BD47C94F /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 1297F67282CAB974F63F6ADD;
+			remoteInfo = iosApp;
+		};
+/* End PBXContainerItemProxy section */
+
 /* Begin PBXFileReference section */
 		3B0FC6652FA9F9F700B253C4 /* libsqlite3.tbd */ = {isa = PBXFileReference; lastKnownFileType = "sourcecode.text-based-dylib-definition"; name = libsqlite3.tbd; path = usr/lib/libsqlite3.tbd; sourceTree = SDKROOT; };
+		3B0FC6772FAC98BF00B253C4 /* fridgeyTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = fridgeyTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		555931F5F25BD04D6D650FCA /* Fridgey.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Fridgey.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		6C79952199E50F923A811EE6 /* Pods-iosApp.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-iosApp.release.xcconfig"; path = "Target Support Files/Pods-iosApp/Pods-iosApp.release.xcconfig"; sourceTree = "<group>"; };
 		85253ACD5648F3843983E57B /* Pods-iosApp.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-iosApp.debug.xcconfig"; path = "Target Support Files/Pods-iosApp/Pods-iosApp.debug.xcconfig"; sourceTree = "<group>"; };
@@ -30,6 +41,11 @@
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
+		3B0FC6782FAC98BF00B253C4 /* fridgeyTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = fridgeyTests;
+			sourceTree = "<group>";
+		};
 		606FAC62CF8FFCADAD661232 /* iosApp */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
@@ -55,6 +71,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		3B0FC6742FAC98BF00B253C4 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -62,6 +85,7 @@
 			isa = PBXGroup;
 			children = (
 				555931F5F25BD04D6D650FCA /* Fridgey.app */,
+				3B0FC6772FAC98BF00B253C4 /* fridgeyTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -71,6 +95,7 @@
 			children = (
 				6B3F4D6E72086187B7472014 /* Configuration */,
 				606FAC62CF8FFCADAD661232 /* iosApp */,
+				3B0FC6782FAC98BF00B253C4 /* fridgeyTests */,
 				43D138F8F1B8FD75976E3D9A /* Products */,
 				965190F6873C3D1EC80A1BCB /* Pods */,
 				A4A087B7E782E55CF9BB3910 /* Frameworks */,
@@ -121,6 +146,29 @@
 			productReference = 555931F5F25BD04D6D650FCA /* Fridgey.app */;
 			productType = "com.apple.product-type.application";
 		};
+		3B0FC6762FAC98BF00B253C4 /* fridgeyTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 3B0FC67D2FAC98BF00B253C4 /* Build configuration list for PBXNativeTarget "fridgeyTests" */;
+			buildPhases = (
+				3B0FC6732FAC98BF00B253C4 /* Sources */,
+				3B0FC6742FAC98BF00B253C4 /* Frameworks */,
+				3B0FC6752FAC98BF00B253C4 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				3B0FC67C2FAC98BF00B253C4 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				3B0FC6782FAC98BF00B253C4 /* fridgeyTests */,
+			);
+			name = fridgeyTests;
+			packageProductDependencies = (
+			);
+			productName = fridgeyTests;
+			productReference = 3B0FC6772FAC98BF00B253C4 /* fridgeyTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -128,11 +176,15 @@
 			isa = PBXProject;
 			attributes = {
 				BuildIndependentTargetsInParallel = 1;
-				LastSwiftUpdateCheck = 1620;
+				LastSwiftUpdateCheck = 2640;
 				LastUpgradeCheck = 1620;
 				TargetAttributes = {
 					1297F67282CAB974F63F6ADD = {
 						CreatedOnToolsVersion = 16.2;
+					};
+					3B0FC6762FAC98BF00B253C4 = {
+						CreatedOnToolsVersion = 26.4.1;
+						TestTargetID = 1297F67282CAB974F63F6ADD;
 					};
 				};
 			};
@@ -151,11 +203,19 @@
 			projectRoot = "";
 			targets = (
 				1297F67282CAB974F63F6ADD /* iosApp */,
+				3B0FC6762FAC98BF00B253C4 /* fridgeyTests */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
+		3B0FC6752FAC98BF00B253C4 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		CD2BE8C2344049DE659B2612 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -238,9 +298,70 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		3B0FC6732FAC98BF00B253C4 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
+/* Begin PBXTargetDependency section */
+		3B0FC67C2FAC98BF00B253C4 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 1297F67282CAB974F63F6ADD /* iosApp */;
+			targetProxy = 3B0FC67B2FAC98BF00B253C4 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
 /* Begin XCBuildConfiguration section */
+		3B0FC67E2FAC98BF00B253C4 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 33Q839ADQL;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.4;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.jescuj00.fridgeyTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Fridgey.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Fridgey";
+			};
+			name = Debug;
+		};
+		3B0FC67F2FAC98BF00B253C4 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 33Q839ADQL;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.4;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.jescuj00.fridgeyTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Fridgey.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Fridgey";
+			};
+			name = Release;
+		};
 		48D05B3142D8C5D4B4E407BC /* Debug */ = {
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = 85253ACD5648F3843983E57B /* Pods-iosApp.debug.xcconfig */;
@@ -427,6 +548,15 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		3B0FC67D2FAC98BF00B253C4 /* Build configuration list for PBXNativeTarget "fridgeyTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				3B0FC67E2FAC98BF00B253C4 /* Debug */,
+				3B0FC67F2FAC98BF00B253C4 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 		54B4A02B8D5FC49B4A8770BC /* Build configuration list for PBXNativeTarget "iosApp" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (

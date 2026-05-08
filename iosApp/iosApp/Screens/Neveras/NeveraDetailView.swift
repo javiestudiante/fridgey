@@ -5,10 +5,12 @@ struct NeveraDetailView: View {
 
     @StateObject private var viewModel: NeveraDetailViewModel
 
+    let neveraId: String
     @State private var showAddSheet = false
     @State private var pendingDelete: Producto?
 
     init(neveraId: String, currentUserId: String) {
+        self.neveraId = neveraId
         _viewModel = StateObject(
             wrappedValue: NeveraDetailViewModel(
                 neveraId: neveraId,
@@ -51,11 +53,9 @@ struct NeveraDetailView: View {
             }
         }
         .sheet(isPresented: $showAddSheet) {
-            AddProductoSheet(
-                isPresented: $showAddSheet,
-                onSave: { name, cat, date in
-                    viewModel.addProducto(name: name, categoria: cat, fechaCaducidad: date)
-                }
+            AddProductoView(
+                neveraId: neveraId,
+                onCompleted: { showAddSheet = false }
             )
         }
         .alert(
@@ -158,56 +158,8 @@ private struct EmptyProductosView: View {
     }
 }
 
-// MARK: - Add producto sheet
-
-private struct AddProductoSheet: View {
-    @Binding var isPresented: Bool
-    let onSave: (String, Categoria, Date) -> Void
-
-    @State private var name: String = ""
-    @State private var categoria: Categoria = .otros
-    @State private var fecha: Date = Calendar.current.date(byAdding: .day, value: 7, to: Date()) ?? Date()
-
-    /// Categoria.entries comes from K/N as `NSArray` of `Categoria`.
-    private var allCategorias: [Categoria] {
-        (Categoria.entries as? [Categoria]) ?? []
-    }
-
-    var body: some View {
-        NavigationStack {
-            Form {
-                Section("Datos") {
-                    TextField("Nombre", text: $name)
-                        .autocorrectionDisabled()
-
-                    Picker("Categoría", selection: $categoria) {
-                        ForEach(allCategorias, id: \.self) { cat in
-                            Text(cat.displayName).tag(cat)
-                        }
-                    }
-
-                    DatePicker(
-                        "Fecha de caducidad",
-                        selection: $fecha,
-                        in: Calendar.current.startOfDay(for: Date())...,
-                        displayedComponents: .date
-                    )
-                }
-            }
-            .navigationTitle("Añadir producto")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancelar") { isPresented = false }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Guardar") {
-                        onSave(name, categoria, fecha)
-                        isPresented = false
-                    }
-                    .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
-                }
-            }
-        }
-    }
-}
+// `AddProductoSheet` (the inline form previously here) was replaced by
+// `AddProductoView` in `Screens/Productos/`, which adds the
+// Escanear / A mano toggle, the `isFormPristine` one-way gate, and the
+// scanner integration — full functional parity with Android's
+// `AddProductoScreen`. See `AddProductoView.swift`.

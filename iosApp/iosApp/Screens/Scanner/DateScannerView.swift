@@ -5,19 +5,41 @@ import Shared
 /// iOS scanner screen — full functional parity with `DateScannerScreen.kt`
 /// (Android).
 ///
-/// State map (mirrors Kotlin VM):
-///  - `.requestingPermission` → centred spinner.
-///  - `.permissionDenied`     → icon + copy + "Abrir ajustes" + "Cancelar".
-///  - `.scanning` & `.datesDetected` → camera preview + viewfinder overlay
-///    + close (X) top-left + bottom bar (chip when datesDetected, plus
-///    "Introducir manualmente").
-///  - `.error(message)`       → icon + copy + "Reintentar".
+/// ## Layout (two stable layers)
 ///
-/// Auto-confirm: when the VM's stability counter hits 3, it emits
-/// `.datePicked`; the View captures it via `.onReceive(viewModel.events)`
-/// and calls `onDatePicked`. Manual entry button posts
-/// `.manualEntryRequested`, the View calls `onManualEntry`. Cancel (X) is
-/// View-local — calls `onCancel` directly without going through the VM.
+/// The body is a `ZStack` of two layers:
+///
+///  1. **Camera layer** — `CameraPreviewView(session:)`, present
+///     whenever `shouldShowCameraPreview` is true. Its SwiftUI
+///     structural identity is anchored at the top of the `body`'s
+///     `ZStack` so it survives every `.scanning` ↔ `.datesDetected`
+///     transition. Putting the preview INSIDE a state-switch caused a
+///     ~10 s freeze: SwiftUI tore down and rebuilt the `UIView` on
+///     every stability-counter tick, and re-binding the
+///     `AVCaptureSession` to a fresh preview layer blanks the camera
+///     for ~3 s per re-bind.
+///  2. **Overlay layer** — `stateOverlay`, a `@ViewBuilder` that
+///     renders the per-state UI on top of the camera. Lightweight; safe
+///     to rebuild on every state tick.
+///
+/// ## State map (mirrors Kotlin VM)
+///
+///  - `.requestingPermission` → spinner overlay (no camera layer).
+///  - `.permissionDenied`     → icon + copy + "Abrir ajustes" + "Cancelar"
+///    (no camera layer).
+///  - `.scanning` & `.datesDetected` → camera layer beneath; overlay
+///    holds viewfinder + close (X) + bottom bar (chip when
+///    `datesDetected`, plus "Introducir manualmente").
+///  - `.error(message)`       → icon + copy + "Reintentar" (no camera
+///    layer).
+///
+/// ## Auto-confirm
+///
+/// When the VM's stability counter hits 3 it emits `.datePicked`; the
+/// View captures it via `.onReceive(viewModel.events)` and calls
+/// `onDatePicked`. Manual entry button posts `.manualEntryRequested`,
+/// the View calls `onManualEntry`. Cancel (X) is View-local — calls
+/// `onCancel` directly without going through the VM.
 struct DateScannerView: View {
 
     let onCancel: () -> Void
@@ -51,25 +73,41 @@ struct DateScannerView: View {
     )
 
     var body: some View {
-        Group {
-            switch viewModel.state {
-            case .requestingPermission:
-                requestingPermissionView
-            case .permissionDenied:
-                permissionDeniedView
-            case .scanning:
-                scanningView(detectedDate: nil, stabilityProgress: 0)
-            case let .datesDetected(date, progress):
-                scanningView(detectedDate: date, stabilityProgress: progress)
-            case let .error(message):
-                errorView(message: message)
+        // Two-layer ZStack. The camera preview lives at the top of the
+        // body so its SwiftUI structural identity is stable across every
+        // state transition in which it is visible — concretely, the
+        // `.scanning` ↔ `.datesDetected` ping-pong driven by the
+        // stability counter. Previously the preview lived INSIDE a
+        // `switch` that emitted a fresh `scanningView(...)` per case;
+        // SwiftUI treated those as different identities and tore down /
+        // recreated the underlying `UIView` on every tick, which
+        // re-attaches the `AVCaptureSession` to a brand-new
+        // `AVCaptureVideoPreviewLayer`. Each re-attach blanks the
+        // preview for ~3 s; three ticks → ~10 s freeze. Keeping the
+        // preview here, gated only by `shouldShowCameraPreview`,
+        // guarantees it survives every `.scanning` ↔ `.datesDetected`
+        // hop without rebuild.
+        ZStack {
+            // CAPA 1 — camera preview. Stable identity while
+            // `shouldShowCameraPreview` stays true. Only torn down when
+            // we leave the scanning states entirely (permission lost,
+            // error) — which is the desired moment to stop holding the
+            // camera anyway.
+            if shouldShowCameraPreview {
+                CameraPreviewView(session: session)
+                    .ignoresSafeArea()
             }
+
+            // CAPA 2 — state-driven UI on top. The overlays are
+            // transparent outside their content so the camera layer
+            // beneath remains visible.
+            stateOverlay
         }
         .task {
             await viewModel.onAppear()
             await syncSession()
         }
-        .onChange(of: scanningEnabled) { _, _ in
+        .onChange(of: shouldShowCameraPreview) { _, _ in
             Task { await syncSession() }
         }
         .onDisappear {
@@ -88,15 +126,38 @@ struct DateScannerView: View {
         }
     }
 
-    /// Bool projection of the state: are we in a state where the camera
-    /// session should be running? Used as `.onChange(of:)` key so we don't
-    /// re-fire syncSession on every progress tick inside `.datesDetected`.
-    private var scanningEnabled: Bool {
+    /// True iff the camera preview UIView should be alive AND the
+    /// `AVCaptureSession` should be running. Held constant across
+    /// `.scanning` ↔ `.datesDetected` so the preview's SwiftUI identity
+    /// never flips during a stability-counter cycle. Also used as the
+    /// key in `.onChange(of:)` to drive session start/stop — single
+    /// Bool means we don't re-fire `syncSession` on every progress
+    /// tick inside `.datesDetected`.
+    private var shouldShowCameraPreview: Bool {
         switch viewModel.state {
         case .scanning, .datesDetected:
             return true
         default:
             return false
+        }
+    }
+
+    /// Renders the overlay UI for the current state. Camera preview is
+    /// NOT here — see CAPA 1 in `body`. Marked `@ViewBuilder` so the
+    /// `switch` branches can return heterogeneous view types.
+    @ViewBuilder
+    private var stateOverlay: some View {
+        switch viewModel.state {
+        case .requestingPermission:
+            requestingPermissionView
+        case .permissionDenied:
+            permissionDeniedView
+        case .scanning:
+            scanningOverlay(detectedDate: nil, stabilityProgress: 0)
+        case let .datesDetected(date, progress):
+            scanningOverlay(detectedDate: date, stabilityProgress: progress)
+        case let .error(message):
+            errorView(message: message)
         }
     }
 
@@ -125,15 +186,18 @@ struct DateScannerView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    private func scanningView(
+    /// Overlay rendered on top of the persistent camera layer for the
+    /// `.scanning` and `.datesDetected` states. Does NOT include the
+    /// camera preview itself — that lives in CAPA 1 of `body` so it
+    /// survives the `.scanning` ↔ `.datesDetected` transitions
+    /// triggered by stability-counter ticks. Everything in here is
+    /// safe to rebuild on every tick (lightweight SwiftUI views
+    /// only — no `UIViewRepresentable`, no AVFoundation re-binding).
+    private func scanningOverlay(
         detectedDate: Kotlinx_datetimeLocalDate?,
         stabilityProgress: Float
     ) -> some View {
         ZStack {
-            // Camera preview at the back, full-bleed.
-            CameraPreviewView(session: session)
-                .ignoresSafeArea()
-
             // Dark overlay with viewfinder cutout + guidance text.
             ViewfinderOverlay()
 
@@ -202,7 +266,7 @@ struct DateScannerView: View {
     /// Off-main for `startRunning` / `stopRunning` to avoid the iOS 17+
     /// main-thread checker (those calls block ~100 ms on first invocation).
     private func syncSession() async {
-        if scanningEnabled {
+        if shouldShowCameraPreview {
             if !sessionConfigured {
                 let configured = configureSession()
                 if !configured {
@@ -236,22 +300,38 @@ struct DateScannerView: View {
         guard !didWarmUpVision else { return }
         didWarmUpVision = true
         Task.detached(priority: .userInitiated) {
-            let blank = Self.makeBlankWarmUpImage()
+            let warmUpImage = Self.makeWarmUpImage()
             let recognizer = TextRecognizer()
             _ = try? await recognizer.recognizeText(
-                imageData: ImageData(uiImage: blank)
+                imageData: ImageData(uiImage: warmUpImage)
             )
             recognizer.close()
         }
     }
 
-    /// 1×1 white pixel. Smallest valid input that still triggers Vision's
-    /// model load. Static to avoid capturing `self` in the detached Task.
-    private static func makeBlankWarmUpImage() -> UIImage {
-        let renderer = UIGraphicsImageRenderer(size: CGSize(width: 1, height: 1))
+    /// 256×64 white background with a black date-like string. A 1×1 blank
+    /// image is NOT sufficient: Vision short-circuits the `.accurate`
+    /// pipeline when there is nothing recognisable in the frame, so only
+    /// the lightweight detector initialises — not the recognition model.
+    /// Drawing real text forces the recognition weights to page in NOW,
+    /// while the user still sees the viewfinder, instead of LATER on the
+    /// first real frame that contains a date (which would freeze the app
+    /// for ~10 s while the model loads under live capture load).
+    ///
+    /// `nonisolated` so it is callable from the detached Task without
+    /// inheriting any actor isolation from the enclosing `View`.
+    nonisolated private static func makeWarmUpImage() -> UIImage {
+        let size = CGSize(width: 256, height: 64)
+        let renderer = UIGraphicsImageRenderer(size: size)
         return renderer.image { ctx in
             UIColor.white.setFill()
-            ctx.fill(CGRect(x: 0, y: 0, width: 1, height: 1))
+            ctx.fill(CGRect(origin: .zero, size: size))
+            let text = "TEST 01/01/2030" as NSString
+            let attributes: [NSAttributedString.Key: Any] = [
+                .font: UIFont.systemFont(ofSize: 28, weight: .medium),
+                .foregroundColor: UIColor.black,
+            ]
+            text.draw(at: CGPoint(x: 16, y: 16), withAttributes: attributes)
         }
     }
 

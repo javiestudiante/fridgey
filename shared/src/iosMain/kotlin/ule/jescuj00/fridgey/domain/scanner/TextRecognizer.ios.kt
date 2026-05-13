@@ -97,6 +97,46 @@ actual class ImageData(val uiImage: UIImage)
  */
 actual class TextRecognizer {
 
+    /**
+     * Cached, fully-configured [VNRecognizeTextRequest], reused across
+     * every call to [recognizeText] for the lifetime of this recognizer.
+     *
+     * ## Why cache (vs. fresh per frame)
+     *
+     * The first `VNRecognizeTextRequest` that actually executes against
+     * real text takes ~10 s while the `.accurate` recognition weights
+     * page in. Constructing the request and assigning
+     * `recognitionLanguages` is not free either: each language pulls its
+     * tokenizer / candidate list. Doing this once per `TextRecognizer`
+     * instance — instead of once per frame at 2 fps — means the cold
+     * cost is paid exactly once. Combined with the warm-up dummy frame
+     * fired by the iOS scanner View on entering `.scanning`, the first
+     * REAL camera frame finds a hot request and returns in tens of ms.
+     *
+     * ## Why this is safe to share across calls
+     *
+     * Apple documents `VNRequest` as reusable as long as its
+     * configuration properties are not mutated mid-execution. We set
+     * them once in [createConfiguredRequest] and never touch them again.
+     * What IS created fresh per frame is the [VNImageRequestHandler],
+     * which retains the image and must not be reused.
+     *
+     * ## Result snapshotting
+     *
+     * After `performRequests` returns, `request.results` holds the
+     * observations for the just-processed image. Those get OVERWRITTEN
+     * on the next call. [runVisionOcr] reads them synchronously inside
+     * the same function frame and projects to an immutable [String]
+     * before returning, so no aliasing leaks across invocations.
+     *
+     * Lazy because the property must not run at field-init time —
+     * `Dispatchers.Default` may not be available yet, and we want the
+     * load deferred to the first warm-up call rather than to recognizer
+     * construction.
+     */
+    @OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
+    private val request: VNRecognizeTextRequest by lazy { createConfiguredRequest() }
+
     actual suspend fun recognizeText(imageData: ImageData): OcrResult =
         withContext(Dispatchers.Default) {
             // Vision is synchronous on the calling thread; isolate it to
@@ -104,6 +144,21 @@ actual class TextRecognizer {
             // see the UI thread blocked for the duration of the request.
             runVisionOcr(imageData)
         }
+
+    /**
+     * Builds the singleton [VNRecognizeTextRequest] with the exact same
+     * configuration the previous per-call factory used:
+     * `.accurate`, no language correction, Spanish + English. Called
+     * exactly once per [TextRecognizer] via the [request] lazy delegate.
+     */
+    @OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
+    private fun createConfiguredRequest(): VNRecognizeTextRequest {
+        val r = VNRecognizeTextRequest()
+        r.recognitionLevel = VNRequestTextRecognitionLevelAccurate
+        r.usesLanguageCorrection = false
+        r.recognitionLanguages = listOf("es-ES", "en-US")
+        return r
+    }
 
     @OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
     private fun runVisionOcr(imageData: ImageData): OcrResult {
@@ -117,38 +172,33 @@ actual class TextRecognizer {
                 processingTimeMs = currentTimeMs() - startTime,
             )
 
-        // Captured by the completion lambda; safe because performRequests
-        // calls the completion synchronously on this same thread before
-        // returning. No cross-thread visibility concerns.
-        var rawText = ""
-
-        val request = VNRecognizeTextRequest { completedRequest, error ->
-            if (error != null || completedRequest == null) return@VNRecognizeTextRequest
-            val observations = (completedRequest.results ?: emptyList<Any?>())
-                .filterIsInstance<VNRecognizedTextObservation>()
-            // K/N cinterop loses the generic argument from
-            // `NSArray<VNRecognizedText *>`; we get back `List<*>` and have
-            // to recover the element type explicitly.
-            rawText = observations
-                .mapNotNull { obs ->
-                    (obs.topCandidates(1uL).firstOrNull() as? VNRecognizedText)?.string
-                }
-                .joinToString("\n")
-        }
-        request.recognitionLevel = VNRequestTextRecognitionLevelAccurate
-        request.usesLanguageCorrection = false
-        request.recognitionLanguages = listOf("es-ES", "en-US")
-
+        // Fresh handler per frame — handler owns the image lifetime and
+        // Apple is explicit that it must NOT be reused across images.
         val handler = VNImageRequestHandler(cGImage = cgImage, options = emptyMap<Any?, Any>())
         memScoped {
             val errorPtr = alloc<ObjCObjectVar<NSError?>>()
             handler.performRequests(listOf(request), errorPtr.ptr)
-            // If `performRequests` failed it set errorPtr.value AND already
-            // invoked the completion handler with the error; rawText stays "".
-            // We don't surface the failure as an exception — the use case
-            // already wraps in try/catch and treats empty rawText as
-            // `DateScanResult.NoDateFound`, matching the Android behaviour.
+            // `performRequests` is synchronous; on return `request.results`
+            // has been (re-)populated for this frame. If it errored,
+            // results may be empty/nil and `errorPtr.value` is set — we
+            // do not surface either as an exception: empty results
+            // downstream become `DateScanResult.NoDateFound`, matching the
+            // Android behaviour.
         }
+
+        // Snapshot results into a local String NOW, before any
+        // subsequent call can overwrite `request.results` (the request
+        // is shared across calls). K/N cinterop loses the generic
+        // argument from `NSArray<VNRecognizedTextObservation *>`; we get
+        // back `List<*>` and have to recover the element type
+        // explicitly.
+        val observations = (request.results ?: emptyList<Any?>())
+            .filterIsInstance<VNRecognizedTextObservation>()
+        val rawText = observations
+            .mapNotNull { obs ->
+                (obs.topCandidates(1uL).firstOrNull() as? VNRecognizedText)?.string
+            }
+            .joinToString("\n")
 
         val elapsed = currentTimeMs() - startTime
         val dates = DateParser.extractDates(rawText)
@@ -160,9 +210,14 @@ actual class TextRecognizer {
         )
     }
 
+    @OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
     actual fun close() {
-        // No persistent state. Vision creates a fresh
-        // VNImageRequestHandler per call (see KDoc on the class).
+        // Cancel any in-flight execution on the cached request. Safe to
+        // call even if the request is idle (Apple: cancel on an
+        // unstarted/finished request is a no-op). The fresh
+        // VNImageRequestHandler created in `runVisionOcr` has no
+        // long-lived state to release here.
+        request.cancel()
     }
 
     @OptIn(ExperimentalForeignApi::class)

@@ -1,0 +1,49 @@
+-- Migration: schema version 1 -> 2
+--
+-- Brings any "version 1" Producto table up to the canonical 11-column schema
+-- defined in Producto.sq.
+--
+-- During development the table was edited several times WITHOUT migrations or
+-- a version bump, so databases stamped `user_version = 1` can have divergent
+-- shapes in the wild:
+--   * the canonical 8-column schema (id .. imagen_url), and
+--   * an intermediate 10-column shape that already added `cantidad` (typed
+--     INTEGER) and `dias_aviso_antes`, but not `unidad`.
+-- A plain `ALTER TABLE ADD COLUMN` cannot reconcile both: SQLite has no
+-- ADD COLUMN IF NOT EXISTS (it would fail with "duplicate column name" on the
+-- 10-column shape) and it would also leave `cantidad` typed as INTEGER there
+-- instead of REAL. So we rebuild the table using the standard SQLite
+-- table-redefinition pattern.
+--
+-- We copy only the 8 columns guaranteed to exist in EVERY v1 variant; the
+-- three target columns take the same DEFAULTs declared in Producto.sq, which
+-- also backfills preexisting rows. The result is structurally identical to a
+-- freshly created table (asserted by verifyMigration against the canonical v1
+-- baseline). NOTE: any `cantidad` / `dias_aviso_antes` values present in the
+-- intermediate dev shape are intentionally reset to their defaults — those
+-- columns never shipped in a released version.
+--
+-- Foreign keys are off during SQLDelight migrations (neither driver enables
+-- them), and no table references Producto, so dropping and renaming is safe.
+CREATE TABLE Producto_new (
+    id TEXT NOT NULL PRIMARY KEY,
+    id_nevera TEXT NOT NULL,
+    codigo_barras TEXT,
+    nombre TEXT NOT NULL,
+    categoria TEXT NOT NULL,
+    fecha_caducidad INTEGER NOT NULL,
+    fecha_registro INTEGER NOT NULL,
+    imagen_url TEXT,
+    cantidad REAL NOT NULL DEFAULT 1.0,
+    dias_aviso_antes INTEGER NOT NULL DEFAULT 3,
+    unidad TEXT NOT NULL DEFAULT 'unidades',
+    FOREIGN KEY (id_nevera) REFERENCES Nevera(id) ON DELETE CASCADE
+);
+
+INSERT INTO Producto_new (id, id_nevera, codigo_barras, nombre, categoria, fecha_caducidad, fecha_registro, imagen_url)
+SELECT id, id_nevera, codigo_barras, nombre, categoria, fecha_caducidad, fecha_registro, imagen_url
+FROM Producto;
+
+DROP TABLE Producto;
+
+ALTER TABLE Producto_new RENAME TO Producto;

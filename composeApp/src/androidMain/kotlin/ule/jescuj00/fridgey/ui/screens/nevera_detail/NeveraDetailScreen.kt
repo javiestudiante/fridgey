@@ -19,6 +19,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -102,6 +103,10 @@ fun NeveraDetailScreen(
                 state.isLoading -> Box(Modifier.fillMaxSize(), Alignment.Center) {
                     CircularProgressIndicator()
                 }
+                state.error != null -> ErrorState(
+                    message = state.error!!,
+                    onRetry = { viewModel.loadProducts(neveraId, currentUserId) }
+                )
                 state.productos.isEmpty() -> EmptyProductos()
                 else -> ProductoList(
                     productos = state.productos,
@@ -258,6 +263,29 @@ private fun DaysRemainingBadge(days: Int, color: Color) {
         color = color,
         fontWeight = FontWeight.SemiBold
     )
+}
+
+@Composable
+private fun ErrorState(message: String, onRetry: () -> Unit) {
+    // Same minimal pattern as NeveraListScreen.ErrorState — kept consistent on
+    // purpose. Visual redesign is a separate session.
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Text(
+            text = "Algo no funcionó",
+            style = MaterialTheme.typography.titleLarge,
+            color = MaterialTheme.colorScheme.error
+        )
+        Spacer(Modifier.height(8.dp))
+        Text(text = message, style = MaterialTheme.typography.bodyMedium)
+        Spacer(Modifier.height(16.dp))
+        Button(onClick = onRetry) { Text("Reintentar") }
+    }
 }
 
 @Composable

@@ -6,6 +6,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import ule.jescuj00.fridgey.data.repository.NeveraRepository
@@ -39,9 +40,21 @@ class NeveraDetailViewModel(
                 _uiState.update { it.copy(error = e.message) }
             }
 
-            productoRepository.getProductosByNevera(neveraId).collect { list ->
-                _uiState.update { it.copy(isLoading = false, productos = list, error = null) }
-            }
+            // Mirror NeveraListViewModel.observeNeveras / iOS ProductoListBinder:
+            // a failure in the underlying SQLDelight Flow must surface as an
+            // error UI state, never escape the coroutine and crash the process.
+            productoRepository.getProductosByNevera(neveraId)
+                .catch { e ->
+                    _uiState.update {
+                        it.copy(
+                            isLoading = false,
+                            error = e.message ?: "Error al cargar los productos"
+                        )
+                    }
+                }
+                .collect { list ->
+                    _uiState.update { it.copy(isLoading = false, productos = list, error = null) }
+                }
         }
     }
 

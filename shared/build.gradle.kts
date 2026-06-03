@@ -74,6 +74,15 @@ sqldelight {
     databases {
         create("FoodSaverDatabase") {
             packageName.set("ule.jescuj00.fridgey.database")
+            // Export a versioned snapshot of the schema so migrations can be
+            // validated at build time. The schema version is derived from the
+            // migration files (`<n>.sqm` migrates from version n -> n+1), so
+            // adding `1.sqm` bumps the schema to version 2 and the generated
+            // Schema.migrate() runs the ALTER TABLEs on databases still at v1.
+            schemaOutputDirectory.set(file("src/commonMain/sqldelight/databases"))
+            // Fail the build if a migration does not bring a versioned schema
+            // snapshot up to the current .sq definition.
+            verifyMigrations.set(true)
         }
     }
 }

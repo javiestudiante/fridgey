@@ -13,9 +13,11 @@ import kotlinx.datetime.LocalDate
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.plus
 import kotlinx.datetime.todayIn
+import kotlinx.datetime.daysUntil
 import ule.jescuj00.fridgey.data.repository.ProductoRepository
 import ule.jescuj00.fridgey.domain.model.Categoria
 import ule.jescuj00.fridgey.domain.model.Producto
+import ule.jescuj00.fridgey.domain.model.UnidadMedida
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 
@@ -30,6 +32,9 @@ data class AddProductoUiState(
     val name: String = "",
     val categoria: Categoria = Categoria.OTROS,
     val fechaCaducidad: LocalDate = defaultExpiry(),
+    val cantidad: Double = 1.0,
+    val unidad: UnidadMedida = UnidadMedida.UNIDADES,
+    val diasAvisoAntes: Int = 3,
     val isLoading: Boolean = false,
     val error: String? = null,
     val success: Boolean = false,
@@ -74,23 +79,105 @@ class AddProductoViewModel(
         }
     }
 
+    /**
+     * Changing the category also re-applies that category's default unit
+     * (`unidadDefault`). This is intentional and overrides any manual unit
+     * the user had picked previously — we do NOT remember a per-user
+     * override across category switches. The contract documented in the
+     * spec: pick category → unit snaps to the suggestion → user is free
+     * to override the unit afterwards.
+     */
     fun onCategoriaSelected(categoria: Categoria) {
         _uiState.update {
             it.copy(
                 categoria = categoria,
+                unidad = categoria.unidadDefault,
+                // Pristine only if BOTH the category is the default (OTROS)
+                // AND the resulting unit is the default-of-OTROS (UNIDADES).
+                // Because we auto-sync unidad here, the second clause is
+                // implied by the first, but expressed explicitly for
+                // clarity in case `unidadDefault` for OTROS ever changes.
                 isFormPristine = it.isFormPristine && categoria == Categoria.OTROS,
             )
         }
     }
 
+    /**
+     * Re-anchors the expiry date. Also clamps `diasAvisoAntes` to a valid
+     * range relative to the new date — see [clampAvisoAntes] for the
+     * exact rule. The clamp is a derived side-effect; the pristine flag
+     * still depends only on whether `fecha` equals the initial default.
+     */
     fun onFechaSelected(fecha: LocalDate) {
         _uiState.update {
+            val newDias = clampAvisoAntes(it.diasAvisoAntes, fecha)
             it.copy(
                 fechaCaducidad = fecha,
+                diasAvisoAntes = newDias,
                 error = null,
                 isFormPristine = it.isFormPristine && fecha == initialExpiry,
             )
         }
+    }
+
+    /**
+     * Cantidad now flows as a positive `Double` to support continuous
+     * units (g, ml, kg, l). Non-positive inputs are silently rejected
+     * here — the UI text field keeps the user's raw typing but the VM
+     * only accepts values > 0.
+     */
+    fun onCantidadChanged(cantidad: Double) {
+        if (cantidad <= 0.0) return
+        _uiState.update {
+            it.copy(
+                cantidad = cantidad,
+                error = null,
+                isFormPristine = it.isFormPristine && cantidad == 1.0,
+            )
+        }
+    }
+
+    /**
+     * Manual override of the unit (after the auto-default from category).
+     * The pristine flag is consulted against the CURRENT category's
+     * `unidadDefault` so that "user just picked a category and didn't
+     * touch the unit" still counts as pristine.
+     */
+    fun onUnidadChanged(unidad: UnidadMedida) {
+        _uiState.update {
+            it.copy(
+                unidad = unidad,
+                error = null,
+                isFormPristine = it.isFormPristine && unidad == it.categoria.unidadDefault,
+            )
+        }
+    }
+
+    fun onDiasAvisoAntesChanged(dias: Int) {
+        _uiState.update {
+            it.copy(
+                diasAvisoAntes = dias,
+                error = null,
+                isFormPristine = it.isFormPristine && dias == 3,
+            )
+        }
+    }
+
+    /**
+     * Clamps a `diasAvisoAntes` value so it never exceeds `daysUntil(fecha)`
+     * from today. Examples:
+     *  - fecha today + 10 days, current aviso 3  → 3 (untouched).
+     *  - fecha today + 2 days,  current aviso 7  → 2 (clamped down).
+     *  - fecha today + 0 days,  current aviso 3  → 0 (warn same day).
+     *  - fecha in the past (defensive),          → 0.
+     *
+     * Returning the new aviso lets the caller `.copy()` the state in a
+     * single update without re-emitting.
+     */
+    private fun clampAvisoAntes(currentDias: Int, fecha: LocalDate): Int {
+        val today = Clock.System.todayIn(TimeZone.currentSystemDefault())
+        val maxDias = today.daysUntil(fecha).coerceAtLeast(0)
+        return currentDias.coerceAtMost(maxDias)
     }
 
     // -- Scan-mode toggle plumbing --
@@ -112,8 +199,10 @@ class AddProductoViewModel(
      */
     fun onScannedDateReceived(date: LocalDate) {
         _uiState.update {
+            val newDias = clampAvisoAntes(it.diasAvisoAntes, date)
             it.copy(
                 fechaCaducidad = date,
+                diasAvisoAntes = newDias,
                 error = null,
                 isFormPristine = false,
                 scanMode = ScanMode.Manual,
@@ -137,6 +226,14 @@ class AddProductoViewModel(
             _uiState.update { it.copy(error = "La fecha debe ser hoy o futura") }
             return
         }
+        if (state.cantidad <= 0.0) {
+            _uiState.update { it.copy(error = "La cantidad debe ser mayor que cero") }
+            return
+        }
+        if (state.diasAvisoAntes < 0) {
+            _uiState.update { it.copy(error = "Los días de aviso deben ser cero o positivos") }
+            return
+        }
 
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true) }
@@ -149,7 +246,10 @@ class AddProductoViewModel(
                     categoria = state.categoria,
                     fechaCaducidad = state.fechaCaducidad,
                     fechaRegistro = today,
-                    imagenUrl = null
+                    imagenUrl = null,
+                    cantidad = state.cantidad,
+                    unidad = state.unidad,
+                    diasAvisoAntes = state.diasAvisoAntes,
                 )
                 productoRepository.insertProducto(producto)
                 _uiState.update { it.copy(isLoading = false, success = true) }

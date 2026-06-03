@@ -27,6 +27,9 @@ final class AddProductoViewModel: ObservableObject {
         var name: String = ""
         var categoria: Categoria = .otros
         var fechaCaducidad: Kotlinx_datetimeLocalDate
+        var cantidad: Double = 1.0
+        var unidad: UnidadMedida = .unidades
+        var diasAvisoAntes: Int = 3
         var isLoading: Bool = false
         var error: String? = nil
         var success: Bool = false
@@ -61,15 +64,44 @@ final class AddProductoViewModel: ObservableObject {
         state.isFormPristine = state.isFormPristine && name.isEmpty
     }
 
+    /// Changing the category also re-applies that category's default unit.
+    /// Mirrors the Kotlin contract: any manual unit override is wiped on
+    /// the next category switch — we do NOT remember per-user overrides
+    /// across categories.
     func onCategoriaSelected(_ categoria: Categoria) {
         state.categoria = categoria
+        state.unidad = categoria.unidadDefault
         state.isFormPristine = state.isFormPristine && (categoria == .otros)
     }
 
+    /// Re-anchors the expiry date. Also clamps `diasAvisoAntes` to the new
+    /// `daysUntil(fecha)` upper bound — see `clampAvisoAntes`. The pristine
+    /// flag still depends only on whether `fecha` equals `initialExpiry`.
     func onFechaSelected(_ fecha: Kotlinx_datetimeLocalDate) {
         state.fechaCaducidad = fecha
+        state.diasAvisoAntes = Self.clampAvisoAntes(state.diasAvisoAntes, fecha: fecha)
         state.error = nil
         state.isFormPristine = state.isFormPristine && Self.datesEqual(fecha, initialExpiry)
+    }
+
+    func onCantidadChanged(_ cantidad: Double) {
+        guard cantidad > 0.0 else { return }
+        state.cantidad = cantidad
+        state.error = nil
+        state.isFormPristine = state.isFormPristine && cantidad == 1.0
+    }
+
+    /// Manual override of the unit (after the auto-default from category).
+    func onUnidadChanged(_ unidad: UnidadMedida) {
+        state.unidad = unidad
+        state.error = nil
+        state.isFormPristine = state.isFormPristine && unidad == state.categoria.unidadDefault
+    }
+
+    func onDiasAvisoAntesChanged(_ dias: Int) {
+        state.diasAvisoAntes = dias
+        state.error = nil
+        state.isFormPristine = state.isFormPristine && dias == 3
     }
 
     // MARK: - Scan-mode toggle plumbing
@@ -87,6 +119,7 @@ final class AddProductoViewModel: ObservableObject {
     /// rest of the fields.
     func onScannedDateReceived(_ date: Kotlinx_datetimeLocalDate) {
         state.fechaCaducidad = date
+        state.diasAvisoAntes = Self.clampAvisoAntes(state.diasAvisoAntes, fecha: date)
         state.error = nil
         state.isFormPristine = false
         state.scanMode = .manual
@@ -108,11 +141,24 @@ final class AddProductoViewModel: ObservableObject {
             state.error = "La fecha debe ser hoy o futura"
             return
         }
+        guard state.cantidad > 0.0 else {
+            state.error = "La cantidad debe ser mayor que cero"
+            return
+        }
+        guard state.diasAvisoAntes >= 0 else {
+            state.error = "Los días de aviso deben ser cero o positivos"
+            return
+        }
 
         state.isLoading = true
         let snapshot = state
         let categoria = snapshot.categoria
         let fechaCaducidad = snapshot.fechaCaducidad
+        // Kotlin Double <-> Swift Double map directly via K/N, no cast.
+        let cantidad = snapshot.cantidad
+        let unidad = snapshot.unidad
+        // `diasAvisoAntes` is still Kotlin Int → Swift Int32 at the boundary.
+        let diasAvisoAntes = Int32(snapshot.diasAvisoAntes)
 
         Task { @MainActor [weak self] in
             guard let self = self else { return }
@@ -125,7 +171,10 @@ final class AddProductoViewModel: ObservableObject {
                     categoria: categoria,
                     fechaCaducidad: fechaCaducidad,
                     fechaRegistro: Kotlinx_datetimeLocalDate.from(date: todayDate),
-                    imagenUrl: nil
+                    imagenUrl: nil,
+                    cantidad: cantidad,
+                    unidad: unidad,
+                    diasAvisoAntes: diasAvisoAntes
                 )
                 try await self.productoRepository.insertProducto(producto: producto)
                 self.state.isLoading = false
@@ -147,5 +196,17 @@ final class AddProductoViewModel: ObservableObject {
         _ a: Kotlinx_datetimeLocalDate, _ b: Kotlinx_datetimeLocalDate
     ) -> Bool {
         a.year == b.year && a.monthNumber == b.monthNumber && a.dayOfMonth == b.dayOfMonth
+    }
+
+    /// Clamps `currentDias` so it never exceeds the number of days
+    /// between today and `fecha`. If the date is today or earlier,
+    /// the clamp floor is 0 ("warn me the same day"). Mirrors the
+    /// Kotlin `clampAvisoAntes` helper exactly.
+    static func clampAvisoAntes(_ currentDias: Int, fecha: Kotlinx_datetimeLocalDate) -> Int {
+        let todayStart = Calendar.current.startOfDay(for: Date())
+        let fechaStart = Calendar.current.startOfDay(for: fecha.asSwiftDate)
+        let diff = Calendar.current.dateComponents([.day], from: todayStart, to: fechaStart).day ?? 0
+        let maxDias = max(0, diff)
+        return min(currentDias, maxDias)
     }
 }

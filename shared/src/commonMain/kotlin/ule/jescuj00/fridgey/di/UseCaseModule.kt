@@ -5,6 +5,7 @@ import org.koin.dsl.module
 import ule.jescuj00.fridgey.domain.scanner.TextRecognizer
 import ule.jescuj00.fridgey.domain.usecase.AddColaboradorUseCase
 import ule.jescuj00.fridgey.domain.usecase.CreateNeveraUseCase
+import ule.jescuj00.fridgey.domain.usecase.ParseQuantityUseCase
 import ule.jescuj00.fridgey.domain.usecase.RemoveColaboradorUseCase
 import ule.jescuj00.fridgey.domain.usecase.ScanExpirationDateUseCase
 import ule.jescuj00.fridgey.domain.usecase.auth.ObserveAuthStateUseCase
@@ -26,6 +27,7 @@ val useCaseModule: Module = module {
     factory { AddColaboradorUseCase(get(), get()) }
     factory { RemoveColaboradorUseCase(get()) }
     factory { ScanExpirationDateUseCase(get()) }
+    factory { ParseQuantityUseCase() }
 
     factory { SignInWithGoogleUseCase(get(), get()) }
     factory { SignInWithAppleUseCase(get(), get()) }

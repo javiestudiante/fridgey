@@ -4,6 +4,7 @@ plugins {
     alias(libs.plugins.kotlinMultiplatform)
     alias(libs.plugins.androidLibrary)
     alias(libs.plugins.sqldelight)
+    alias(libs.plugins.kotlinSerialization)
 }
 
 kotlin {
@@ -30,6 +31,14 @@ kotlin {
             api(libs.kotlinx.datetime)
             api(libs.kotlinx.coroutines.core)
             api(libs.koin.core)
+            // Ktor multiplatform HTTP client + JSON (Open Food Facts lookup).
+            // The engine is provided per-platform (okhttp / darwin); commonMain
+            // builds a plain HttpClient and Ktor picks the engine off the
+            // classpath at runtime.
+            implementation(libs.ktor.client.core)
+            implementation(libs.ktor.client.content.negotiation)
+            implementation(libs.ktor.serialization.kotlinx.json)
+            implementation(libs.kotlinx.serialization.json)
             // gitlive Firebase Kotlin SDK — runs in commonMain, calls into the
             // native Firebase SDK on each platform (Android JVM / iOS Obj-C).
             api(libs.gitlive.firebase.auth)
@@ -38,6 +47,7 @@ kotlin {
         androidMain.dependencies {
             implementation(libs.sqldelight.android.driver)
             implementation(libs.mlkit.text.recognition)
+            implementation(libs.ktor.client.okhttp)
             api(libs.koin.android)
             // Pin Firebase Android SDK versions through the BoM so any
             // transitive Firebase artifact pulled in by gitlive resolves
@@ -51,6 +61,7 @@ kotlin {
         }
         iosMain.dependencies {
             implementation(libs.sqldelight.native.driver)
+            implementation(libs.ktor.client.darwin)
         }
         commonTest.dependencies {
             implementation(libs.kotlin.test)

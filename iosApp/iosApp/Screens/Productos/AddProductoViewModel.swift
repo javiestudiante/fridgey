@@ -30,6 +30,10 @@ final class AddProductoViewModel: ObservableObject {
         var cantidad: Double = 1.0
         var unidad: UnidadMedida = .unidades
         var diasAvisoAntes: Int = 3
+        /// Pre-filled by the scanner's barcode / Open Food Facts phase; saved
+        /// with the product. Nil when added by hand (no barcode scanned).
+        var codigoBarras: String? = nil
+        var imagenUrl: String? = nil
         var isLoading: Bool = false
         var error: String? = nil
         var success: Bool = false
@@ -125,6 +129,24 @@ final class AddProductoViewModel: ObservableObject {
         state.scanMode = .manual
     }
 
+    /// Applies the Open Food Facts autofill resolved by the scanner's CÓDIGO
+    /// phase. Sets fields directly (NOT via `onCategoriaSelected`, which would
+    /// override `unidad` with the category default) and marks the form dirty.
+    /// A blank name (lookup miss) leaves the current name untouched.
+    func onScannedProductReceived(_ autoFill: ProductAutoFill) {
+        if !autoFill.nombre.isEmpty {
+            state.name = autoFill.nombre
+        }
+        state.categoria = autoFill.categoria
+        state.cantidad = autoFill.cantidad
+        state.unidad = autoFill.unidad
+        state.codigoBarras = autoFill.codigoBarras
+        state.imagenUrl = autoFill.imagenUrl
+        state.error = nil
+        state.isFormPristine = false
+        state.scanMode = .manual
+    }
+
     // MARK: - Save
 
     func onSavePressed(neveraId: String) {
@@ -166,12 +188,12 @@ final class AddProductoViewModel: ObservableObject {
                 let producto = Producto(
                     id: UUID().uuidString,
                     idNevera: neveraId,
-                    codigoBarras: nil,
+                    codigoBarras: snapshot.codigoBarras,
                     nombre: trimmed,
                     categoria: categoria,
                     fechaCaducidad: fechaCaducidad,
                     fechaRegistro: Kotlinx_datetimeLocalDate.from(date: todayDate),
-                    imagenUrl: nil,
+                    imagenUrl: snapshot.imagenUrl,
                     cantidad: cantidad,
                     unidad: unidad,
                     diasAvisoAntes: diasAvisoAntes

@@ -10,6 +10,8 @@ import SwiftUI
 /// then a "transparent" rectangle whose blend mode subtracts it.
 struct ViewfinderOverlay: View {
 
+    var guidanceText: String = "Coloca la fecha de caducidad dentro del recuadro"
+
     private let cutoutWidthFraction: CGFloat = 0.8
     private let cutoutHeightFraction: CGFloat = 0.15
     private let cutoutCornerRadius: CGFloat = 12
@@ -38,7 +40,7 @@ struct ViewfinderOverlay: View {
                     .frame(width: cutoutWidth, height: cutoutHeight)
 
                 // Guidance text, positioned ~40 pt above the cutout top edge.
-                Text("Coloca la fecha de caducidad dentro del recuadro")
+                Text(guidanceText)
                     .font(.body)
                     .foregroundColor(.white)
                     .multilineTextAlignment(.center)

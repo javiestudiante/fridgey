@@ -23,3 +23,11 @@ sealed class Screen(val route: String) {
  * a date has been picked. Value type: `String` (ISO `yyyy-MM-dd`).
  */
 const val SCANNED_DATE_KEY = "scanned_date"
+
+/**
+ * Saved-state key for the Open Food Facts autofill resolved during the
+ * scanner's CÓDIGO phase. Value type: `String` — a JSON-encoded
+ * `ProductAutoFill` (see `ProductAutoFill.toJson` / `fromJsonOrNull`).
+ * Absent when the barcode phase was skipped.
+ */
+const val SCANNED_AUTOFILL_KEY = "scanned_autofill"

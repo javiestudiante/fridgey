@@ -4,14 +4,17 @@ import org.koin.core.component.KoinComponent
 import org.koin.core.component.get
 import org.koin.core.context.startKoin
 import ule.jescuj00.fridgey.data.auth.AuthStateBinder
+import ule.jescuj00.fridgey.data.binders.ExpiringTodayBinder
 import ule.jescuj00.fridgey.data.binders.NeveraListBinder
 import ule.jescuj00.fridgey.data.binders.ProductoListBinder
 import ule.jescuj00.fridgey.data.repository.AuthRepository
 import ule.jescuj00.fridgey.data.repository.NeveraRepository
 import ule.jescuj00.fridgey.data.repository.ProductoRepository
 import ule.jescuj00.fridgey.data.repository.UsuarioRepository
+import ule.jescuj00.fridgey.domain.scanner.BarcodeScanner
 import ule.jescuj00.fridgey.domain.usecase.AddColaboradorUseCase
 import ule.jescuj00.fridgey.domain.usecase.CreateNeveraUseCase
+import ule.jescuj00.fridgey.domain.usecase.LookupProductByBarcodeUseCase
 import ule.jescuj00.fridgey.domain.usecase.RemoveColaboradorUseCase
 import ule.jescuj00.fridgey.domain.usecase.ScanExpirationDateUseCase
 import ule.jescuj00.fridgey.domain.usecase.auth.ObserveAuthStateUseCase
@@ -47,6 +50,8 @@ fun getCreateNeveraUseCase(): CreateNeveraUseCase = KoinAccessor.get()
 fun getAddColaboradorUseCase(): AddColaboradorUseCase = KoinAccessor.get()
 fun getRemoveColaboradorUseCase(): RemoveColaboradorUseCase = KoinAccessor.get()
 fun getScanExpirationDateUseCase(): ScanExpirationDateUseCase = KoinAccessor.get()
+fun getBarcodeScanner(): BarcodeScanner = KoinAccessor.get()
+fun getLookupProductByBarcodeUseCase(): LookupProductByBarcodeUseCase = KoinAccessor.get()
 
 // --- Auth use cases ---
 fun getSignInWithGoogleUseCase(): SignInWithGoogleUseCase = KoinAccessor.get()
@@ -62,3 +67,6 @@ fun getProductoListBinder(): ProductoListBinder = KoinAccessor.get()
 
 /** Fresh binder per call — same rationale as [getAuthStateBinder]. */
 fun getNeveraListBinder(): NeveraListBinder = KoinAccessor.get()
+
+/** Fresh binder per call — cross-fridge "caducan hoy" home banner. */
+fun getExpiringTodayBinder(): ExpiringTodayBinder = KoinAccessor.get()

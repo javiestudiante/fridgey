@@ -5,6 +5,7 @@ import org.koin.dsl.module
 import ule.jescuj00.fridgey.data.auth.AppleSignInHelper
 import ule.jescuj00.fridgey.data.auth.AuthStateBinder
 import ule.jescuj00.fridgey.data.auth.GoogleSignInHelper
+import ule.jescuj00.fridgey.data.binders.ExpiringTodayBinder
 import ule.jescuj00.fridgey.data.binders.NeveraListBinder
 import ule.jescuj00.fridgey.data.binders.ProductoListBinder
 import ule.jescuj00.fridgey.data.db.DatabaseDriverFactory
@@ -24,4 +25,5 @@ fun iosModule(): Module = module {
     factory { AuthStateBinder(get()) }       // factory: each Swift consumer gets its own scope
     factory { ProductoListBinder(get()) }    // idem
     factory { NeveraListBinder(get()) }      // idem
+    factory { ExpiringTodayBinder(get()) }   // idem
 }

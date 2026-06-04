@@ -17,7 +17,7 @@ import ule.jescuj00.fridgey.data.repository.UsuarioRepository
  */
 val repositoryModule: Module = module {
     single { UsuarioRepository(get()) }
-    single { NeveraRepository(get(), get(), get()) }
+    single { NeveraRepository(get(), get(), get(), get()) }
     single { ProductoRepository(get()) }
     single { AuthRepository(auth = Firebase.auth, usuarioRepository = get()) }
 }

@@ -1,6 +1,7 @@
 package ule.jescuj00.fridgey.ui.scanner
 
 import androidx.camera.core.ImageProxy
+import io.mockk.coEvery
 import io.mockk.mockk
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.channels.BufferOverflow
@@ -9,15 +10,23 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import kotlinx.datetime.LocalDate
 import org.junit.Rule
+import ule.jescuj00.fridgey.data.repository.ProductLookupRepository
+import ule.jescuj00.fridgey.domain.model.ProductAutoFill
+import ule.jescuj00.fridgey.domain.model.ProductLookupResult
+import ule.jescuj00.fridgey.domain.model.UnidadMedida
+import ule.jescuj00.fridgey.domain.model.Categoria
+import ule.jescuj00.fridgey.domain.scanner.BarcodeResult
+import ule.jescuj00.fridgey.domain.scanner.BarcodeScanner
 import ule.jescuj00.fridgey.domain.scanner.DateScanResult
+import ule.jescuj00.fridgey.domain.usecase.LookupProductByBarcodeUseCase
 import ule.jescuj00.fridgey.domain.usecase.ScanExpirationDateUseCase
 import ule.jescuj00.fridgey.test.MainDispatcherRule
-import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -29,41 +38,54 @@ class DateScannerViewModelTest {
     val mainDispatcherRule = MainDispatcherRule()
 
     private val scanUseCase: ScanExpirationDateUseCase = mockk(relaxed = true)
-    private val fakeAnalyzer = FakeFrameAnalyzer()
+    private val barcodeScanner: BarcodeScanner = mockk(relaxed = true)
+    private val lookupRepo: ProductLookupRepository = mockk()
+    private val lookupUseCase = LookupProductByBarcodeUseCase(lookupRepo)
 
-    private fun newVm(
-        analyzer: FrameAnalyzer = fakeAnalyzer,
-    ): DateScannerViewModel = DateScannerViewModel(
+    private val fakeDateAnalyzer = FakeFrameAnalyzer()
+    private val fakeBarcodeAnalyzer = FakeBarcodeAnalyzer()
+
+    private fun newVm(): DateScannerViewModel = DateScannerViewModel(
         scanUseCase = scanUseCase,
-        analyzerFactory = { analyzer },
+        barcodeScanner = barcodeScanner,
+        lookupProduct = lookupUseCase,
+        dateAnalyzerFactory = { fakeDateAnalyzer },
+        barcodeAnalyzerFactory = { fakeBarcodeAnalyzer },
     )
 
-    @AfterTest
-    fun stopFakeAnalyzer() {
-        // No-op for FakeFrameAnalyzer, but kept symmetric in case future
-        // fakes hold real resources.
+    /** Pushes a stable barcode + a stubbed OFF lookup so the VM advances into
+     *  the DATE phase, where the pre-existing date assertions apply. */
+    private fun TestScope.driveToDatePhase(
+        vm: DateScannerViewModel,
+        lookup: ProductLookupResult = ProductLookupResult.NotFound,
+    ) {
+        coEvery { lookupRepo.lookup(any()) } returns lookup
+        vm.onPermissionResult(granted = true, canAskAgain = true)
+        advanceUntilIdle()
+        repeat(3) {
+            fakeBarcodeAnalyzer.push(BarcodeResult("8410000000000", "EAN_13"))
+            advanceUntilIdle()
+        }
+        advanceUntilIdle()  // let the lookup coroutine + enterDatePhase run
     }
 
-    // ---- 1. Initial state ----
+    // ---- Initial / permission ----
 
     @Test
     fun initialState_isRequestingPermission() = runTest {
-        val vm = newVm()
-        assertEquals(ScannerUiState.RequestingPermission, vm.uiState.value)
+        assertEquals(ScannerUiState.RequestingPermission, newVm().uiState.value)
     }
 
-    // ---- 2-4. Permission outcomes ----
-
     @Test
-    fun onPermissionResult_granted_transitionsToScanning() = runTest {
+    fun onPermissionResult_granted_startsBarcodePhase() = runTest {
         val vm = newVm()
         vm.onPermissionResult(granted = true, canAskAgain = true)
         advanceUntilIdle()
-        assertEquals(ScannerUiState.Scanning, vm.uiState.value)
+        assertEquals(ScannerUiState.ScanningBarcode(0f), vm.uiState.value)
     }
 
     @Test
-    fun onPermissionResult_deniedCanAskAgain_transitionsToPermissionDeniedTrue() = runTest {
+    fun onPermissionResult_deniedCanAskAgain() = runTest {
         val vm = newVm()
         vm.onPermissionResult(granted = false, canAskAgain = true)
         advanceUntilIdle()
@@ -71,158 +93,101 @@ class DateScannerViewModelTest {
     }
 
     @Test
-    fun onPermissionResult_deniedCannotAskAgain_transitionsToPermissionDeniedFalse() = runTest {
+    fun onPermissionResult_deniedCannotAskAgain() = runTest {
         val vm = newVm()
         vm.onPermissionResult(granted = false, canAskAgain = false)
         advanceUntilIdle()
         assertEquals(ScannerUiState.PermissionDenied(canAskAgain = false), vm.uiState.value)
     }
 
-    // ---- 5-6. Analyzer result mapping ----
+    // ---- CODE phase ----
 
     @Test
-    fun analyzerEmitsSuccess_stateBecomesDatesDetectedSingleton() = runTest {
+    fun barcodeProgress_incrementsOnRepeats() = runTest {
         val vm = newVm()
+        coEvery { lookupRepo.lookup(any()) } returns ProductLookupResult.NotFound
         vm.onPermissionResult(granted = true, canAskAgain = true)
         advanceUntilIdle()
 
+        fakeBarcodeAnalyzer.push(BarcodeResult("8410000000000", "EAN_13"))
+        advanceUntilIdle()
+        assertEquals(
+            ScannerUiState.ScanningBarcode(1f / 3f),
+            vm.uiState.value,
+        )
+
+        fakeBarcodeAnalyzer.push(BarcodeResult("8410000000000", "EAN_13"))
+        advanceUntilIdle()
+        assertEquals(
+            ScannerUiState.ScanningBarcode(2f / 3f),
+            vm.uiState.value,
+        )
+    }
+
+    @Test
+    fun threeIdenticalBarcodes_lookupFound_entersDatePhase_andSetsAutoFill() = runTest {
+        val vm = newVm()
+        val found = ProductLookupResult.Found(
+            ProductAutoFill(
+                codigoBarras = "8410000000000",
+                nombre = "Leche (Hacendado)",
+                cantidad = 1.0,
+                unidad = UnidadMedida.LITROS,
+                imagenUrl = "https://img",
+                categoria = Categoria.OTROS,
+            )
+        )
+        driveToDatePhase(vm, lookup = found)
+
+        assertEquals(ScannerUiState.Scanning, vm.uiState.value)
+        assertEquals("Leche (Hacendado)", vm.pendingAutoFill?.nombre)
+        assertEquals("8410000000000", vm.pendingAutoFill?.codigoBarras)
+    }
+
+    @Test
+    fun threeIdenticalBarcodes_lookupNotFound_stillEntersDatePhase_withBarcodeOnly() = runTest {
+        val vm = newVm()
+        driveToDatePhase(vm, lookup = ProductLookupResult.NotFound)
+
+        assertEquals(ScannerUiState.Scanning, vm.uiState.value)
+        assertEquals("8410000000000", vm.pendingAutoFill?.codigoBarras)
+        assertEquals("", vm.pendingAutoFill?.nombre)
+    }
+
+    // ---- DATE phase (pre-existing OCR logic, now reached via the barcode phase) ----
+
+    @Test
+    fun dateSuccess_becomesDatesDetected() = runTest {
+        val vm = newVm()
+        driveToDatePhase(vm)
+
         val date = LocalDate(2026, 5, 15)
-        fakeAnalyzer.push(DateScanResult.Success(date))
+        fakeDateAnalyzer.push(DateScanResult.Success(date))
         advanceUntilIdle()
 
         assertEquals(
             ScannerUiState.DatesDetected(date = date, stabilityProgress = 1f / 3f),
-            vm.uiState.value
+            vm.uiState.value,
         )
     }
 
     @Test
-    fun analyzerEmitsMultiple_stateBecomesDatesDetectedAll() = runTest {
+    fun multipleDatesFound_reducesToLatest() = runTest {
         val vm = newVm()
-        vm.onPermissionResult(granted = true, canAskAgain = true)
+        driveToDatePhase(vm)
+
+        val older = LocalDate(2026, 5, 15)
+        val newer = LocalDate(2026, 6, 1)
+        fakeDateAnalyzer.push(DateScanResult.MultipleDatesFound(listOf(older, newer)))
         advanceUntilIdle()
 
-        val d1 = LocalDate(2026, 5, 15)
-        val d2 = LocalDate(2026, 6, 1)
-        fakeAnalyzer.push(DateScanResult.MultipleDatesFound(listOf(d1, d2)))
-        advanceUntilIdle()
-
-        // After the reduce-to-latest step the singleton is `d2`.
-        assertEquals(
-            ScannerUiState.DatesDetected(date = d2, stabilityProgress = 1f / 3f),
-            vm.uiState.value
-        )
+        assertEquals(newer, (vm.uiState.value as ScannerUiState.DatesDetected).date)
     }
-
-    // ---- Pre-grant lifecycle ----
-
-    @Test
-    fun analyzerPushBeforeGrant_isReplayedAfterGrant() = runTest {
-        val vm = newVm()
-        val date = LocalDate(2026, 5, 15)
-
-        // Pre-grant push: in production this can't happen because the analyzer
-        // doesn't exist yet, but we lock in the SharedFlow replay-1 contract:
-        // whatever value is current at grant time will be processed.
-        fakeAnalyzer.push(DateScanResult.Success(date))
-        advanceUntilIdle()
-        assertEquals(ScannerUiState.RequestingPermission, vm.uiState.value)
-
-        vm.onPermissionResult(granted = true, canAskAgain = true)
-        advanceUntilIdle()
-
-        assertEquals(
-            ScannerUiState.DatesDetected(date = date, stabilityProgress = 1f / 3f),
-            vm.uiState.value
-        )
-    }
-
-    // ---- 7. Two identical Success in a row → both reach the VM ----
-
-    @Test
-    fun analyzerEmitsSameSuccessTwice_progressesStability() = runTest {
-        val vm = newVm()
-        val emissions = mutableListOf<ScannerUiState>()
-        val collector = launch(UnconfinedTestDispatcher(testScheduler)) {
-            vm.uiState.toList(emissions)
-        }
-
-        vm.onPermissionResult(granted = true, canAskAgain = true)
-        advanceUntilIdle()
-
-        val date = LocalDate(2026, 5, 15)
-        fakeAnalyzer.push(DateScanResult.Success(date))
-        advanceUntilIdle()
-        fakeAnalyzer.push(DateScanResult.Success(date))   // identical
-        advanceUntilIdle()
-
-        collector.cancel()
-
-        // Both Success emissions reach the VM (SharedFlow doesn't deduplicate),
-        // each producing a *distinct* DatesDetected with a higher progress.
-        // The transition list locks in: 1/3 first, then 2/3 — and nothing else.
-        assertEquals(
-            listOf(
-                ScannerUiState.RequestingPermission,
-                ScannerUiState.Scanning,
-                ScannerUiState.DatesDetected(date = date, stabilityProgress = 1f / 3f),
-                ScannerUiState.DatesDetected(date = date, stabilityProgress = 2f / 3f),
-            ),
-            emissions
-        )
-    }
-
-    // ---- 8-9. One-shot events ----
-
-    @Test
-    fun onConfirmDate_emitsDatePickedEvent_uiStateUnchanged() = runTest {
-        val vm = newVm()
-        // Move past the initial state so we can detect "unchanged".
-        vm.onPermissionResult(granted = true, canAskAgain = true)
-        advanceUntilIdle()
-        val stateBefore = vm.uiState.value
-
-        val captured = mutableListOf<ScannerEvent>()
-        val collector = launch(UnconfinedTestDispatcher(testScheduler)) {
-            vm.events.toList(captured)
-        }
-
-        val date = LocalDate(2026, 5, 15)
-        vm.onConfirmDate(date)
-        advanceUntilIdle()
-
-        collector.cancel()
-
-        assertEquals(listOf<ScannerEvent>(ScannerEvent.DatePicked(date)), captured)
-        assertEquals(stateBefore, vm.uiState.value)
-    }
-
-    @Test
-    fun onManualEntry_emitsManualEntryRequestedEvent() = runTest {
-        val vm = newVm()
-        vm.onPermissionResult(granted = true, canAskAgain = true)
-        advanceUntilIdle()
-
-        val captured = mutableListOf<ScannerEvent>()
-        val collector = launch(UnconfinedTestDispatcher(testScheduler)) {
-            vm.events.toList(captured)
-        }
-
-        vm.onManualEntry()
-        advanceUntilIdle()
-
-        collector.cancel()
-
-        assertEquals(listOf<ScannerEvent>(ScannerEvent.ManualEntryRequested), captured)
-    }
-
-    // ---- New: stability auto-confirm tests ----
 
     @Test
     fun threeConsecutiveSameDate_emitsDatePicked() = runTest {
         val vm = newVm()
-        vm.onPermissionResult(granted = true, canAskAgain = true)
-        advanceUntilIdle()
+        driveToDatePhase(vm)
 
         val captured = mutableListOf<ScannerEvent>()
         val collector = launch(UnconfinedTestDispatcher(testScheduler)) {
@@ -231,20 +196,18 @@ class DateScannerViewModelTest {
 
         val date = LocalDate(2026, 5, 15)
         repeat(3) {
-            fakeAnalyzer.push(DateScanResult.Success(date))
+            fakeDateAnalyzer.push(DateScanResult.Success(date))
             advanceUntilIdle()
         }
-
         collector.cancel()
 
         assertEquals(listOf<ScannerEvent>(ScannerEvent.DatePicked(date)), captured)
     }
 
     @Test
-    fun twoConsecutiveSameThenDifferent_doesNotAutoConfirm() = runTest {
+    fun twoSameThenDifferentDate_doesNotAutoConfirm() = runTest {
         val vm = newVm()
-        vm.onPermissionResult(granted = true, canAskAgain = true)
-        advanceUntilIdle()
+        driveToDatePhase(vm)
 
         val captured = mutableListOf<ScannerEvent>()
         val collector = launch(UnconfinedTestDispatcher(testScheduler)) {
@@ -253,46 +216,26 @@ class DateScannerViewModelTest {
 
         val d1 = LocalDate(2026, 5, 15)
         val d2 = LocalDate(2026, 6, 1)
-        fakeAnalyzer.push(DateScanResult.Success(d1))
-        advanceUntilIdle()
-        fakeAnalyzer.push(DateScanResult.Success(d1))
-        advanceUntilIdle()
-        fakeAnalyzer.push(DateScanResult.Success(d2))   // resets the counter
-        advanceUntilIdle()
-
+        fakeDateAnalyzer.push(DateScanResult.Success(d1)); advanceUntilIdle()
+        fakeDateAnalyzer.push(DateScanResult.Success(d1)); advanceUntilIdle()
+        fakeDateAnalyzer.push(DateScanResult.Success(d2)); advanceUntilIdle()
         collector.cancel()
 
         assertTrue(captured.isEmpty(), "expected no events, got $captured")
     }
 
+    // ---- One-shot events ----
+
     @Test
-    fun stabilityProgressIncrements() = runTest {
+    fun onConfirmDate_emitsDatePicked() = runTest {
         val vm = newVm()
-        vm.onPermissionResult(granted = true, canAskAgain = true)
-        advanceUntilIdle()
-
-        val date = LocalDate(2026, 5, 15)
-
-        fakeAnalyzer.push(DateScanResult.Success(date))
-        advanceUntilIdle()
-        assertEquals(
-            1f / 3f,
-            (vm.uiState.value as ScannerUiState.DatesDetected).stabilityProgress
-        )
-
-        fakeAnalyzer.push(DateScanResult.Success(date))
-        advanceUntilIdle()
-        assertEquals(
-            2f / 3f,
-            (vm.uiState.value as ScannerUiState.DatesDetected).stabilityProgress
-        )
-
-        // Subscribe before the third push so we capture the auto-confirm.
         val captured = mutableListOf<ScannerEvent>()
         val collector = launch(UnconfinedTestDispatcher(testScheduler)) {
             vm.events.toList(captured)
         }
-        fakeAnalyzer.push(DateScanResult.Success(date))
+
+        val date = LocalDate(2026, 5, 15)
+        vm.onConfirmDate(date)
         advanceUntilIdle()
         collector.cancel()
 
@@ -300,55 +243,39 @@ class DateScannerViewModelTest {
     }
 
     @Test
-    fun multipleDatesFound_reducesToLatest() = runTest {
+    fun onManualEntry_emitsManualEntryRequested() = runTest {
         val vm = newVm()
-        vm.onPermissionResult(granted = true, canAskAgain = true)
+        val captured = mutableListOf<ScannerEvent>()
+        val collector = launch(UnconfinedTestDispatcher(testScheduler)) {
+            vm.events.toList(captured)
+        }
+
+        vm.onManualEntry()
         advanceUntilIdle()
+        collector.cancel()
 
-        val older = LocalDate(2026, 5, 15)
-        val newer = LocalDate(2026, 6, 1)
-        fakeAnalyzer.push(DateScanResult.MultipleDatesFound(listOf(older, newer)))
-        advanceUntilIdle()
-
-        val state = vm.uiState.value as ScannerUiState.DatesDetected
-        assertEquals(newer, state.date)
-    }
-
-    // ---- Sanity check on the fake itself ----
-
-    @Test
-    fun fakeAnalyzer_pushUpdatesResultsFlow() = runTest {
-        // SharedFlow has no `.value`; the replay buffer is the test-side
-        // equivalent. Empty before any push, contains the latest after.
-        assertEquals(null, fakeAnalyzer.results.replayCache.firstOrNull())
-        fakeAnalyzer.push(DateScanResult.NoDateFound("raw"))
-        assertTrue(fakeAnalyzer.results.replayCache.firstOrNull() is DateScanResult.NoDateFound)
+        assertEquals(listOf<ScannerEvent>(ScannerEvent.ManualEntryRequested), captured)
     }
 }
 
 // =============================================================================
-// Test double
+// Test doubles
 // =============================================================================
 
-/**
- * In-memory [FrameAnalyzer]. Tests call [push] to drive emissions; `analyze`
- * is unused at the VM level (the VM only consumes [results]).
- */
 private class FakeFrameAnalyzer : FrameAnalyzer {
     private val _results = MutableSharedFlow<DateScanResult?>(
-        replay = 1,
-        extraBufferCapacity = 1,
-        onBufferOverflow = BufferOverflow.DROP_OLDEST,
+        replay = 1, extraBufferCapacity = 1, onBufferOverflow = BufferOverflow.DROP_OLDEST,
     )
     override val results: SharedFlow<DateScanResult?> = _results.asSharedFlow()
+    fun push(result: DateScanResult?) { _results.tryEmit(result) }
+    override fun analyze(image: ImageProxy) { image.close() }
+}
 
-    fun push(result: DateScanResult?) {
-        _results.tryEmit(result)
-    }
-
-    override fun analyze(image: ImageProxy) {
-        // VM tests don't drive frames through the analyzer, but the contract
-        // still requires every accepted ImageProxy to be closed.
-        image.close()
-    }
+private class FakeBarcodeAnalyzer : BarcodeFrameAnalyzer {
+    private val _results = MutableSharedFlow<BarcodeResult?>(
+        replay = 1, extraBufferCapacity = 1, onBufferOverflow = BufferOverflow.DROP_OLDEST,
+    )
+    override val results: SharedFlow<BarcodeResult?> = _results.asSharedFlow()
+    fun push(result: BarcodeResult?) { _results.tryEmit(result) }
+    override fun analyze(image: ImageProxy) { image.close() }
 }

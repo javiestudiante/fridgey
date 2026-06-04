@@ -47,6 +47,7 @@ kotlin {
         androidMain.dependencies {
             implementation(libs.sqldelight.android.driver)
             implementation(libs.mlkit.text.recognition)
+            implementation(libs.mlkit.barcode.scanning)
             implementation(libs.ktor.client.okhttp)
             api(libs.koin.android)
             // Pin Firebase Android SDK versions through the BoM so any

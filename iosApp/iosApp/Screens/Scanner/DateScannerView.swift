@@ -43,7 +43,7 @@ import Shared
 struct DateScannerView: View {
 
     let onCancel: () -> Void
-    let onDatePicked: (Kotlinx_datetimeLocalDate) -> Void
+    let onDatePicked: (Kotlinx_datetimeLocalDate, ProductAutoFill?) -> Void
     let onManualEntry: () -> Void
 
     @StateObject private var viewModel = DateScannerViewModel()
@@ -54,15 +54,6 @@ struct DateScannerView: View {
     @State private var session = AVCaptureSession()
     @State private var sessionConfigured = false
 
-    /// Apple Vision lazy-loads its OCR model the first time
-    /// `VNRecognizeTextRequest` runs (5–10 s cold). If that load happens on
-    /// the first real camera frame, that frame stays retained for the
-    /// duration and starves AVCaptureSession's small buffer pool, blanking
-    /// the preview. We pre-trigger Vision with a 1×1 dummy image while the
-    /// user is still seeing the viewfinder, so by the time real frames
-    /// arrive the model is already warm. Fire-and-forget; result discarded.
-    /// One-shot per View instance.
-    @State private var didWarmUpVision = false
 
     /// Serial queue for `AVCaptureVideoDataOutput` callbacks. Must be
     /// serial per Apple docs; QoS `.userInitiated` because `.background`
@@ -119,7 +110,8 @@ struct DateScannerView: View {
         .onReceive(viewModel.events) { event in
             switch event {
             case let .datePicked(date):
-                onDatePicked(date)
+                // Hand back both the date and whatever the CODE phase resolved.
+                onDatePicked(date, viewModel.pendingAutoFill)
             case .manualEntryRequested:
                 onManualEntry()
             }
@@ -135,7 +127,10 @@ struct DateScannerView: View {
     /// tick inside `.datesDetected`.
     private var shouldShowCameraPreview: Bool {
         switch viewModel.state {
-        case .scanning, .datesDetected:
+        case .scanningBarcode, .searchingProduct, .scanning, .datesDetected:
+            // Camera stays up across the whole CÓDIGO → FECHA flow: the
+            // session starts once and is never rebuilt on a phase change,
+            // which is what keeps CameraPreviewView stable.
             return true
         default:
             return false
@@ -152,6 +147,10 @@ struct DateScannerView: View {
             requestingPermissionView
         case .permissionDenied:
             permissionDeniedView
+        case let .scanningBarcode(progress):
+            barcodeOverlay(progress: progress)
+        case .searchingProduct:
+            searchingOverlay
         case .scanning:
             scanningOverlay(detectedDate: nil, stabilityProgress: 0)
         case let .datesDetected(date, progress):
@@ -186,22 +185,18 @@ struct DateScannerView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    /// Overlay rendered on top of the persistent camera layer for the
-    /// `.scanning` and `.datesDetected` states. Does NOT include the
-    /// camera preview itself — that lives in CAPA 1 of `body` so it
-    /// survives the `.scanning` ↔ `.datesDetected` transitions
-    /// triggered by stability-counter ticks. Everything in here is
-    /// safe to rebuild on every tick (lightweight SwiftUI views
-    /// only — no `UIViewRepresentable`, no AVFoundation re-binding).
-    private func scanningOverlay(
-        detectedDate: Kotlinx_datetimeLocalDate?,
-        stabilityProgress: Float
+    /// Shared camera-overlay chrome: viewfinder + phase-specific guidance
+    /// text + top-left close button + a bottom bar. All lightweight SwiftUI
+    /// (no `UIViewRepresentable`, no AVFoundation) — the camera preview itself
+    /// lives in CAPA 1 of `body`, so rebuilding this on every state tick never
+    /// touches the capture session.
+    private func cameraScaffold<Bottom: View>(
+        guidance: String,
+        @ViewBuilder bottom: () -> Bottom
     ) -> some View {
         ZStack {
-            // Dark overlay with viewfinder cutout + guidance text.
-            ViewfinderOverlay()
+            ViewfinderOverlay(guidanceText: guidance)
 
-            // Top-left close button.
             VStack {
                 HStack {
                     Button(action: onCancel) {
@@ -219,23 +214,74 @@ struct DateScannerView: View {
                 Spacer()
             }
 
-            // Bottom bar: chip (when detected) + "Introducir manualmente".
             VStack {
                 Spacer()
-                VStack(spacing: 12) {
-                    if let date = detectedDate {
-                        DetectionChip(date: date, stabilityProgress: stabilityProgress)
-                    }
-                    Button(action: { viewModel.onManualEntry() }) {
-                        Text("Introducir manualmente")
-                            .fontWeight(.medium)
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 10)
-                            .background(.black.opacity(0.4), in: Capsule())
-                    }
+                bottom().padding(.bottom, 24)
+            }
+        }
+    }
+
+    private var manualEntryButton: some View {
+        Button(action: { viewModel.onManualEntry() }) {
+            Text("Introducir manualmente")
+                .fontWeight(.medium)
+                .foregroundStyle(.white)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
+                .background(.black.opacity(0.4), in: Capsule())
+        }
+    }
+
+    private func bannerPill(_ text: String) -> some View {
+        Text(text)
+            .font(.subheadline)
+            .foregroundStyle(.white)
+            .multilineTextAlignment(.center)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+            .background(.black.opacity(0.55), in: Capsule())
+    }
+
+    /// CODE phase — looking for a barcode.
+    private func barcodeOverlay(progress: Float) -> some View {
+        cameraScaffold(guidance: "Escanea el código de barras") {
+            VStack(spacing: 12) {
+                if progress > 0 {
+                    ProgressView(value: Double(progress))
+                        .progressViewStyle(.linear)
+                        .tint(Color.fridgeyMint)
+                        .frame(width: 140)
                 }
-                .padding(.bottom, 24)
+                manualEntryButton
+            }
+        }
+    }
+
+    /// CODE phase — barcode confirmed, querying Open Food Facts.
+    private var searchingOverlay: some View {
+        cameraScaffold(guidance: "Buscando producto…") {
+            VStack(spacing: 12) {
+                ProgressView().tint(.white)
+                manualEntryButton
+            }
+        }
+    }
+
+    /// DATE phase — the pre-existing OCR overlay, now also surfacing the
+    /// Open Food Facts banner from the CODE phase.
+    private func scanningOverlay(
+        detectedDate: Kotlinx_datetimeLocalDate?,
+        stabilityProgress: Float
+    ) -> some View {
+        cameraScaffold(guidance: "Coloca la fecha de caducidad dentro del recuadro") {
+            VStack(spacing: 12) {
+                if let date = detectedDate {
+                    DetectionChip(date: date, stabilityProgress: stabilityProgress)
+                }
+                if let banner = viewModel.productBanner {
+                    bannerPill(banner)
+                }
+                manualEntryButton
             }
         }
     }
@@ -279,12 +325,11 @@ struct DateScannerView: View {
             await Task.detached(priority: .userInitiated) {
                 if !session.isRunning { session.startRunning() }
             }.value
-            // Fire the Vision warm-up only after the session is up — there
-            // is no harm in it running in parallel with `startRunning`, but
-            // keeping it after means we don't compete for the CPU during
-            // the brief AVCapture configuration spike. See `didWarmUpVision`
-            // KDoc above for the rationale.
-            warmUpVisionIfNeeded()
+            // NOTE: Vision OCR warm-up moved to `DateScannerFrameAnalyzer.warmUp()`,
+            // fired from the VM's `enterDatePhase()`. The old warm-up here warmed
+            // a THROWAWAY `TextRecognizer()`, NOT the singleton the analyzer uses
+            // for live frames, so the real recogniser still arrived cold to the
+            // FECHA phase and returned nothing. See `warmUp()` for the full story.
         } else {
             let session = self.session
             await Task.detached(priority: .userInitiated) {
@@ -293,47 +338,6 @@ struct DateScannerView: View {
         }
     }
 
-    /// Forces Apple Vision's OCR model to load NOW (during viewfinder
-    /// display) instead of LATER (on the first real camera frame). One-shot
-    /// per View instance; subsequent calls are no-ops. Result is discarded.
-    private func warmUpVisionIfNeeded() {
-        guard !didWarmUpVision else { return }
-        didWarmUpVision = true
-        Task.detached(priority: .userInitiated) {
-            let warmUpImage = Self.makeWarmUpImage()
-            let recognizer = TextRecognizer()
-            _ = try? await recognizer.recognizeText(
-                imageData: ImageData(uiImage: warmUpImage)
-            )
-            recognizer.close()
-        }
-    }
-
-    /// 256×64 white background with a black date-like string. A 1×1 blank
-    /// image is NOT sufficient: Vision short-circuits the `.accurate`
-    /// pipeline when there is nothing recognisable in the frame, so only
-    /// the lightweight detector initialises — not the recognition model.
-    /// Drawing real text forces the recognition weights to page in NOW,
-    /// while the user still sees the viewfinder, instead of LATER on the
-    /// first real frame that contains a date (which would freeze the app
-    /// for ~10 s while the model loads under live capture load).
-    ///
-    /// `nonisolated` so it is callable from the detached Task without
-    /// inheriting any actor isolation from the enclosing `View`.
-    nonisolated private static func makeWarmUpImage() -> UIImage {
-        let size = CGSize(width: 256, height: 64)
-        let renderer = UIGraphicsImageRenderer(size: size)
-        return renderer.image { ctx in
-            UIColor.white.setFill()
-            ctx.fill(CGRect(origin: .zero, size: size))
-            let text = "TEST 01/01/2030" as NSString
-            let attributes: [NSAttributedString.Key: Any] = [
-                .font: UIFont.systemFont(ofSize: 28, weight: .medium),
-                .foregroundColor: UIColor.black,
-            ]
-            text.draw(at: CGPoint(x: 16, y: 16), withAttributes: attributes)
-        }
-    }
 
     /// Adds the back camera input AND the AVCaptureVideoDataOutput wired to
     /// the VM's analyzer. Returns `true` on success, `false` after asking

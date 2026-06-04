@@ -13,6 +13,7 @@ import android.provider.Settings
 import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.camera.core.ImageAnalysis
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -61,6 +62,7 @@ import java.time.format.DateTimeFormatter
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.toJavaLocalDate
 import org.koin.androidx.compose.koinViewModel
+import ule.jescuj00.fridgey.domain.model.ProductAutoFill
 
 private const val TAG = "DateScannerScreen"
 
@@ -73,7 +75,7 @@ private val chipDateFormatter: DateTimeFormatter =
 
 @Composable
 fun DateScannerScreen(
-    onDatePicked: (LocalDate) -> Unit,
+    onDatePicked: (LocalDate, ProductAutoFill?) -> Unit,
     onManualEntry: () -> Unit,
     onCancel: () -> Unit,
     viewModel: DateScannerViewModel = koinViewModel(),
@@ -81,6 +83,7 @@ fun DateScannerScreen(
     val context = LocalContext.current
     val activity = remember(context) { context as? Activity }
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val banner by viewModel.productBanner.collectAsStateWithLifecycle()
 
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission(),
@@ -120,7 +123,9 @@ fun DateScannerScreen(
     LaunchedEffect(Unit) {
         viewModel.events.collect { event ->
             when (event) {
-                is ScannerEvent.DatePicked -> onDatePicked(event.date)
+                // Hand back both the captured date and whatever the CODE phase
+                // resolved from Open Food Facts (barcode + name + cantidad…).
+                is ScannerEvent.DatePicked -> onDatePicked(event.date, viewModel.pendingAutoFill)
                 ScannerEvent.ManualEntryRequested -> onManualEntry()
             }
         }
@@ -136,16 +141,13 @@ fun DateScannerScreen(
             onCancel = onCancel,
         )
 
-        ScannerUiState.Scanning -> CameraUi(
-            analyzer = viewModel.analyzer,
-            state = s,
-            onCancel = onCancel,
-            onManualTap = { viewModel.onManualEntry() },
-        )
-
+        is ScannerUiState.ScanningBarcode,
+        ScannerUiState.SearchingProduct,
+        ScannerUiState.Scanning,
         is ScannerUiState.DatesDetected -> CameraUi(
             analyzer = viewModel.analyzer,
             state = s,
+            banner = banner,
             onCancel = onCancel,
             onManualTap = { viewModel.onManualEntry() },
         )
@@ -251,32 +253,40 @@ private fun ErrorUi(
 
 @Composable
 private fun CameraUi(
-    analyzer: FrameAnalyzer?,
+    analyzer: ImageAnalysis.Analyzer?,
     state: ScannerUiState,
+    banner: String?,
     onCancel: () -> Unit,
     onManualTap: () -> Unit,
 ) {
+    // Phase-dependent guidance text in the viewfinder overlay.
+    val guidance = when (state) {
+        is ScannerUiState.ScanningBarcode -> "Escanea el código de barras"
+        ScannerUiState.SearchingProduct -> "Buscando producto…"
+        else -> "Coloca la fecha de caducidad dentro del recuadro"
+    }
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(Color.Black),
     ) {
-        // Analyzer should be non-null whenever we're in Scanning/DatesDetected,
-        // but defend against the brief gap between state transition and the
-        // VM's `_analyzer` field being set on the same frame.
+        // Analyzer should be non-null in any camera state, but defend against
+        // the brief gap between a state transition and the VM's analyzer field
+        // being set on the same frame.
         if (analyzer != null) {
             CameraPreview(
                 analyzer = analyzer,
                 modifier = Modifier.fillMaxSize(),
             )
         }
-        ViewfinderOverlay()
+        ViewfinderOverlay(guidanceText = guidance)
         ScannerTopBar(
             onCancel = onCancel,
             modifier = Modifier.align(Alignment.TopStart),
         )
         ScannerBottomBar(
             state = state,
+            banner = banner,
             onManualTap = onManualTap,
             modifier = Modifier.align(Alignment.BottomCenter),
         )
@@ -310,6 +320,7 @@ private fun ScannerTopBar(
 @Composable
 private fun ScannerBottomBar(
     state: ScannerUiState,
+    banner: String?,
     onManualTap: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -320,12 +331,29 @@ private fun ScannerBottomBar(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        if (state is ScannerUiState.DatesDetected) {
-            DetectionChip(
-                date = state.date,
-                stabilityProgress = state.stabilityProgress,
-            )
+        when (state) {
+            is ScannerUiState.ScanningBarcode ->
+                if (state.barcodeProgress > 0f) {
+                    CircularProgressIndicator(
+                        progress = { state.barcodeProgress },
+                        color = MaterialTheme.colorScheme.primary,
+                        trackColor = Color.White.copy(alpha = 0.3f),
+                    )
+                }
+            ScannerUiState.SearchingProduct ->
+                CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
+            is ScannerUiState.DatesDetected ->
+                DetectionChip(date = state.date, stabilityProgress = state.stabilityProgress)
+            else -> Unit
         }
+
+        // Open Food Facts feedback, shown once we've moved on to the date phase.
+        if (banner != null &&
+            (state is ScannerUiState.Scanning || state is ScannerUiState.DatesDetected)
+        ) {
+            BannerPill(text = banner)
+        }
+
         TextButton(onClick = onManualTap) {
             Text(
                 text = "Introducir manualmente",
@@ -333,6 +361,18 @@ private fun ScannerBottomBar(
                 fontWeight = FontWeight.Medium,
             )
         }
+    }
+}
+
+@Composable
+private fun BannerPill(text: String) {
+    Surface(shape = CircleShape, color = Color.Black.copy(alpha = 0.55f)) {
+        Text(
+            text = text,
+            color = Color.White,
+            style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+        )
     }
 }
 

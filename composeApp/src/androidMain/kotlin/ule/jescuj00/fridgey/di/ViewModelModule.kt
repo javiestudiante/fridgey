@@ -20,5 +20,6 @@ fun viewModelModule(): Module = module {
     viewModel { NeveraDetailViewModel(get(), get()) }
     viewModel { AddProductoViewModel(get()) }
     viewModel { LoginViewModel(get()) }
-    viewModel { DateScannerViewModel(get()) }   // get() resolves ScanExpirationDateUseCase
+    // get() resolves ScanExpirationDateUseCase, BarcodeScanner, LookupProductByBarcodeUseCase
+    viewModel { DateScannerViewModel(get(), get(), get()) }
 }

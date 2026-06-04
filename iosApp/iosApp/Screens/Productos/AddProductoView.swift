@@ -172,7 +172,12 @@ struct AddProductoView: View {
             .fullScreenCover(isPresented: $showScanner) {
                 DateScannerView(
                     onCancel: { showScanner = false },
-                    onDatePicked: { date in
+                    onDatePicked: { date, autoFill in
+                        // Apply the Open Food Facts autofill (if the barcode
+                        // phase resolved anything) before the date.
+                        if let autoFill = autoFill {
+                            viewModel.onScannedProductReceived(autoFill)
+                        }
                         viewModel.onScannedDateReceived(date)
                         showScanner = false
                     },

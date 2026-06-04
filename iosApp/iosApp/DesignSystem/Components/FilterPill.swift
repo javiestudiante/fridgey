@@ -1,8 +1,8 @@
 import SwiftUI
 
-/// Rounded pill used in the horizontal filter rail ("Todo · 24", "Lácteos").
-/// Selected: mint-deep fill / white text. Unselected: mint-soft fill /
-/// mint-deep text. `count` is appended as ` · N` when not nil.
+/// Category-filter chip. Selected: mint-deep fill / white text. Unselected:
+/// paper fill / ink-2 text / 1-pt hairline border (per design). `count` is
+/// appended as ` · N` (the active "Todo · 24").
 struct FilterPill: View {
     let label: String
     let selected: Bool
@@ -17,13 +17,16 @@ struct FilterPill: View {
     var body: some View {
         Button(action: onClick) {
             Text(displayText)
-                .font(FridgeyFont.labelMedium)
-                .foregroundStyle(selected ? Color.fridgeySurfaceWhite : Color.fridgeyMintDeep)
-                .padding(.horizontal, FridgeySpacing.md)
-                .padding(.vertical, FridgeySpacing.sm)
+                .font(.custom("Inter-Regular", size: 13))
+                .foregroundStyle(selected ? Color.fridgeySurfaceWhite : Color.fridgeyInkSoft)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
                 .background(
-                    selected ? Color.fridgeyMintDeep : Color.fridgeyMintSoft,
+                    selected ? Color.fridgeyMintDeep : Color.fridgeySurfaceWhite,
                     in: Capsule()
+                )
+                .overlay(
+                    Capsule().stroke(selected ? Color.clear : Color.fridgeyHairline, lineWidth: 1)
                 )
         }
         .buttonStyle(.plain)

@@ -17,6 +17,7 @@ import kotlinx.datetime.daysUntil
 import ule.jescuj00.fridgey.data.repository.ProductoRepository
 import ule.jescuj00.fridgey.domain.model.Categoria
 import ule.jescuj00.fridgey.domain.model.Producto
+import ule.jescuj00.fridgey.domain.model.ProductAutoFill
 import ule.jescuj00.fridgey.domain.model.UnidadMedida
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
@@ -35,6 +36,10 @@ data class AddProductoUiState(
     val cantidad: Double = 1.0,
     val unidad: UnidadMedida = UnidadMedida.UNIDADES,
     val diasAvisoAntes: Int = 3,
+    // Pre-filled by the scanner's barcode/Open Food Facts phase; saved with
+    // the product. Null when added by hand (no barcode scanned).
+    val codigoBarras: String? = null,
+    val imagenUrl: String? = null,
     val isLoading: Boolean = false,
     val error: String? = null,
     val success: Boolean = false,
@@ -197,6 +202,29 @@ class AddProductoViewModel(
      * `initialExpiry`) and switches the active mode back to Manual so the
      * user can adjust the rest of the fields.
      */
+    /**
+     * Applies the Open Food Facts autofill resolved by the scanner's CÓDIGO
+     * phase. Sets the fields directly (NOT via [onCategoriaSelected], which
+     * would override `unidad` with the category default) and marks the form
+     * dirty. A blank name (barcode found but no product / lookup miss) leaves
+     * the current name untouched so the user can type it.
+     */
+    fun onScannedProductReceived(autoFill: ProductAutoFill) {
+        _uiState.update {
+            it.copy(
+                name = autoFill.nombre.ifBlank { it.name },
+                categoria = autoFill.categoria,
+                cantidad = autoFill.cantidad,
+                unidad = autoFill.unidad,
+                codigoBarras = autoFill.codigoBarras,
+                imagenUrl = autoFill.imagenUrl,
+                error = null,
+                isFormPristine = false,
+                scanMode = ScanMode.Manual,
+            )
+        }
+    }
+
     fun onScannedDateReceived(date: LocalDate) {
         _uiState.update {
             val newDias = clampAvisoAntes(it.diasAvisoAntes, date)
@@ -241,12 +269,12 @@ class AddProductoViewModel(
                 val producto = Producto(
                     id = Uuid.random().toString(),
                     idNevera = neveraId,
-                    codigoBarras = null,
+                    codigoBarras = state.codigoBarras,
                     nombre = name,
                     categoria = state.categoria,
                     fechaCaducidad = state.fechaCaducidad,
                     fechaRegistro = today,
-                    imagenUrl = null,
+                    imagenUrl = state.imagenUrl,
                     cantidad = state.cantidad,
                     unidad = state.unidad,
                     diasAvisoAntes = state.diasAvisoAntes,

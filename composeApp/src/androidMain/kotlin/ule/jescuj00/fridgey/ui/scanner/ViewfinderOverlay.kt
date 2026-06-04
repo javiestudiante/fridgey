@@ -32,7 +32,10 @@ import androidx.compose.ui.unit.dp
  * because the destination is the device's framebuffer (already opaque).
  */
 @Composable
-fun ViewfinderOverlay(modifier: Modifier = Modifier) {
+fun ViewfinderOverlay(
+    modifier: Modifier = Modifier,
+    guidanceText: String = "Coloca la fecha de caducidad dentro del recuadro",
+) {
     BoxWithConstraints(modifier = modifier.fillMaxSize()) {
         val cutoutWidthFraction = 0.8f
         val cutoutHeightFraction = 0.15f
@@ -78,7 +81,7 @@ fun ViewfinderOverlay(modifier: Modifier = Modifier) {
         }
 
         Text(
-            text = "Coloca la fecha de caducidad dentro del recuadro",
+            text = guidanceText,
             color = Color.White,
             textAlign = TextAlign.Center,
             style = MaterialTheme.typography.bodyMedium.copy(

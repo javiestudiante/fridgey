@@ -58,7 +58,6 @@ import org.koin.androidx.compose.koinViewModel
 import ule.jescuj00.fridgey.domain.model.Categoria
 import ule.jescuj00.fridgey.domain.model.UnidadMedida
 import ule.jescuj00.fridgey.ui.components.EyebrowLabel
-import ule.jescuj00.fridgey.ui.components.ExpirationState
 import ule.jescuj00.fridgey.ui.components.ProductRow
 import ule.jescuj00.fridgey.ui.components.ScreenHeader
 import ule.jescuj00.fridgey.ui.components.SegmentOption
@@ -464,20 +463,15 @@ private fun VistaPrevia(
 ) {
     val today = Clock.System.todayIn(TimeZone.currentSystemDefault())
     val daysRemaining = today.daysUntil(fechaCaducidad)
-    val expState = when {
-        daysRemaining < 0 -> ExpirationState.EXPIRED
-        daysRemaining <= 1 -> ExpirationState.CRITICAL
-        daysRemaining <= 7 -> ExpirationState.WARNING
-        else -> ExpirationState.OK
-    }
     val displayName = name.trim().ifEmpty { "Producto" }
 
+    // Urgency bucket / colour come from ProductRow via the single
+    // expirationStateOf() source of truth — no thresholds duplicated here.
     ProductRow(
-        emoji = categoria.emoji,
+        categoria = categoria,
         name = displayName,
         supporting = "${categoria.displayName()} · ${formatCantidadDisplay(cantidad, unidad)}",
         daysRemaining = daysRemaining,
-        state = expState,
     )
 }
 

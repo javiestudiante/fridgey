@@ -15,6 +15,7 @@ final class NeveraDetailViewModel: ObservableObject {
         var error: String? = nil
         var productos: [Producto] = []
         var neveraNombre: String = ""
+        var miembros: [Usuario] = []
     }
 
     @Published var state = State()
@@ -33,6 +34,7 @@ final class NeveraDetailViewModel: ObservableObject {
 
     func start() {
         loadNeveraName()
+        loadMiembros()
         binder.start(
             neveraId: neveraId,
             onValue: { [weak self] productos in
@@ -55,6 +57,19 @@ final class NeveraDetailViewModel: ObservableObject {
 
     func stop() {
         binder.dispose()
+    }
+
+    /// Owner + collaborators for the detail header avatars + "N MIEMBROS".
+    private func loadMiembros() {
+        Task { @MainActor [weak self] in
+            guard let self = self else { return }
+            do {
+                let result = try await self.neveraRepository.getMiembros(neveraId: self.neveraId)
+                self.state.miembros = (result as? [Usuario]) ?? []
+            } catch {
+                // best-effort; header just shows fewer avatars
+            }
+        }
     }
 
     private func loadNeveraName() {

@@ -7,15 +7,18 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import ule.jescuj00.fridgey.data.repository.NeveraRepository
-import ule.jescuj00.fridgey.domain.model.Nevera
+import ule.jescuj00.fridgey.domain.model.ExpiringTodaySummary
+import ule.jescuj00.fridgey.domain.model.NeveraResumen
 
 data class NeveraListUiState(
     val isLoading: Boolean = false,
     val error: String? = null,
-    val neveras: List<Nevera> = emptyList()
+    val neveras: List<NeveraResumen> = emptyList(),
+    val expiringToday: ExpiringTodaySummary? = null,
 )
 
 class NeveraListViewModel(
@@ -28,22 +31,33 @@ class NeveraListViewModel(
     private var observeJob: Job? = null
 
     /**
-     * Subscribes to the reactive fridge list. Emissions land on every Nevera
-     * insert/update/delete and on every Producto change (the per-fridge
-     * counter depends on it).
+     * Subscribes to the reactive home feed: the per-fridge resúmenes
+     * (products / por caducar / members) AND the cross-fridge "caducan hoy"
+     * summary, combined into one state. Emissions land on any Producto /
+     * Nevera / colaborador change.
      */
     fun observeNeveras(usuarioId: String) {
         observeJob?.cancel()
         observeJob = viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, error = null) }
-            neveraRepository.observeNeverasByUsuario(usuarioId)
+            combine(
+                neveraRepository.observeNeverasResumen(usuarioId),
+                neveraRepository.observeExpiringTodaySummary(usuarioId),
+            ) { neveras, expiring -> neveras to expiring }
                 .catch { e ->
                     _uiState.update {
                         it.copy(isLoading = false, error = e.message ?: "Error al cargar neveras")
                     }
                 }
-                .collect { list ->
-                    _uiState.update { it.copy(isLoading = false, neveras = list, error = null) }
+                .collect { (neveras, expiring) ->
+                    _uiState.update {
+                        it.copy(
+                            isLoading = false,
+                            neveras = neveras,
+                            expiringToday = expiring,
+                            error = null,
+                        )
+                    }
                 }
         }
     }

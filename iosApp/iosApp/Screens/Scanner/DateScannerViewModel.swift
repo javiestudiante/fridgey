@@ -30,6 +30,13 @@ final class DateScannerViewModel: ObservableObject {
         /// Covers both `.denied` and `.restricted` from
         /// `CameraPermissionStatus`; both lead to the same "open Settings" UI.
         case permissionDenied
+        // ---- CODE phase ----
+        /// Looking for a barcode. `barcodeProgress` 0.0..1.0 stability of the
+        /// current candidate.
+        case scanningBarcode(progress: Float)
+        /// A barcode was confirmed; querying Open Food Facts.
+        case searchingProduct
+        // ---- DATE phase (unchanged) ----
         case scanning
         /// `stabilityProgress` runs from 0.0 to 1.0; once it hits 1.0 the VM
         /// emits `.datePicked` automatically (mirroring Android).
@@ -44,21 +51,35 @@ final class DateScannerViewModel: ObservableObject {
 
     @Published private(set) var state: UIState = .requestingPermission
 
+    /// Feedback shown during the DATE phase: "Encontrado: …" / "no encontrado".
+    @Published private(set) var productBanner: String? = nil
+
     /// One-shot navigation events. The View subscribes via `.onReceive`
     /// in the same way Android subscribes to the Kotlin VM's `events`
     /// SharedFlow. `PassthroughSubject` so a late subscriber doesn't
     /// re-receive past events (replay = 0 semantics).
     let events = PassthroughSubject<Event, Never>()
 
+    /// Open Food Facts fields resolved during the CODE phase. The View reads
+    /// this when `.datePicked` fires and hands it back to AddProducto along
+    /// with the date. Non-nil once a barcode has been scanned (carries at
+    /// least the barcode).
+    private(set) var pendingAutoFill: ProductAutoFill?
+
     private(set) var analyzer: DateScannerFrameAnalyzer?
     private var resultsSubscription: AnyCancellable?
+    private var barcodeSubscription: AnyCancellable?
 
     private let permissionService: CameraPermissionService
+    private let lookupUseCase = KoinIosKt.getLookupProductByBarcodeUseCase()
 
     // -- Stability tracking (matches Android exactly) ---------------------------
 
     private var consecutiveCount: Int = 0
     private var lastStableDate: Kotlinx_datetimeLocalDate?
+
+    private var consecutiveBarcodeCount: Int = 0
+    private var lastStableBarcode: String?
 
     // -- Init -------------------------------------------------------------------
 
@@ -97,20 +118,20 @@ final class DateScannerViewModel: ObservableObject {
         let status = permissionService.currentStatus
         switch status {
         case .authorized:
-            ensureAnalyzerStarted()
-            state = .scanning
+            startBarcodePhase()
         case .notDetermined:
             state = .requestingPermission
             let result = await permissionService.requestPermission()
             if result == .authorized {
-                ensureAnalyzerStarted()
-                state = .scanning
+                startBarcodePhase()
             } else {
                 resetStability()
+                resetBarcodeStability()
                 state = .permissionDenied
             }
         case .denied, .restricted:
             resetStability()
+            resetBarcodeStability()
             state = .permissionDenied
         }
     }
@@ -121,17 +142,129 @@ final class DateScannerViewModel: ObservableObject {
     /// and starts collecting its results. Called from `checkAndRequestPermission`
     /// BEFORE `state` is set to `.scanning`, so the View can safely read
     /// `viewModel.analyzer` while configuring its AVCaptureSession.
+    /// Builds the analyzer (if needed), starts it in `.barcode` mode and moves
+    /// to the CODE phase. Called BEFORE the View configures its
+    /// AVCaptureSession, so `viewModel.analyzer` is non-nil there.
+    private func startBarcodePhase() {
+        ensureAnalyzerStarted()
+        analyzer?.setMode(.barcode)
+        resetBarcodeStability()
+        state = .scanningBarcode(progress: 0)
+    }
+
     private func ensureAnalyzerStarted() {
         guard analyzer == nil else { return }
         let analyzer = DateScannerFrameAnalyzer()
         self.analyzer = analyzer
-        // Hop emissions to main before delivering to handleResult — analyzer
-        // sends from a Task whose continuation may be off-main.
+        // Hop emissions to main before delivering — the analyzer sends from a
+        // Task whose continuation may be off-main. Subscribe to BOTH streams;
+        // each handler ignores emissions outside its phase.
         resultsSubscription = analyzer.results
             .receive(on: DispatchQueue.main)
             .sink { [weak self] result in
                 self?.handleResult(result)
             }
+        barcodeSubscription = analyzer.barcodeResults
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] barcode in
+                self?.handleBarcodeResult(barcode)
+            }
+    }
+
+    // -- CODE phase --------------------------------------------------------------
+
+    private func handleBarcodeResult(_ result: BarcodeResult?) {
+        // Ignore once we've left barcode scanning (lookup in flight / date phase).
+        guard case .scanningBarcode = state else { return }
+        guard let code = result?.rawValue, !code.isEmpty else { return }
+
+        if let last = lastStableBarcode, last == code {
+            consecutiveBarcodeCount += 1
+        } else {
+            consecutiveBarcodeCount = 1
+            lastStableBarcode = code
+        }
+
+        let progress = min(max(Float(consecutiveBarcodeCount) / Float(Self.stabilityThreshold), 0), 1)
+        state = .scanningBarcode(progress: progress)
+
+        if consecutiveBarcodeCount == Self.stabilityThreshold {
+            resetBarcodeStability()
+            onBarcodeConfirmed(code)
+        }
+    }
+
+    private func onBarcodeConfirmed(_ barcode: String) {
+        state = .searchingProduct
+        Task { @MainActor [weak self] in
+            guard let self = self else { return }
+            do {
+                let result = try await self.lookupUseCase.invoke(barcode: barcode)
+                self.applyLookup(result, barcode: barcode)
+            } catch {
+                // The repository normally maps failures to NetworkError without
+                // throwing; treat any thrown error the same way.
+                self.pendingAutoFill = self.barcodeOnly(barcode)
+                self.productBanner = "Sin conexión con Open Food Facts · introdúcelo a mano"
+                self.enterDatePhase()
+            }
+        }
+    }
+
+    private func applyLookup(_ result: ProductLookupResult, barcode: String) {
+        // `ProductLookupResult` is a sealed INTERFACE → exported as an ObjC
+        // protocol, so its variants are FLAT classes (ProductLookupResultFound),
+        // not nested types like the sealed-class DateScanResult.Success.
+        switch result {
+        case let found as ProductLookupResultFound:
+            pendingAutoFill = found.product
+            let name = found.product.nombre.isEmpty ? barcode : found.product.nombre
+            productBanner = "Encontrado: \(name)"
+        case is ProductLookupResultNotFound:
+            pendingAutoFill = barcodeOnly(barcode)
+            productBanner = "Producto no encontrado · introdúcelo a mano"
+        case is ProductLookupResultNetworkError:
+            pendingAutoFill = barcodeOnly(barcode)
+            productBanner = "Sin conexión con Open Food Facts · introdúcelo a mano"
+        default:
+            pendingAutoFill = barcodeOnly(barcode)
+        }
+        enterDatePhase()
+    }
+
+    /// Minimal autofill carrying just the scanned barcode (lookup miss/error).
+    private func barcodeOnly(_ barcode: String) -> ProductAutoFill {
+        ProductAutoFill(
+            codigoBarras: barcode,
+            nombre: "",
+            cantidad: 1.0,
+            unidad: Categoria.otros.unidadDefault,
+            imagenUrl: nil,
+            categoria: .otros
+        )
+    }
+
+    /// Switches the analyzer to OCR and moves to the (unchanged) DATE phase.
+    ///
+    /// Order matters:
+    ///  1. `setMode(.date)` — frames now route to the OCR branch.
+    ///  2. `resetTransientState()` — clear any CÓDIGO-phase throttle/flag
+    ///     (robustness; mirrors Android's fresh-analyzer-per-phase).
+    ///  3. `warmUp()` — ROOT-CAUSE FIX: load Vision's text model into the REAL
+    ///     recognizer the analyzer uses, BEFORE the first live FECHA frame.
+    ///     Must come AFTER `resetTransientState()` so its single-flight claim
+    ///     isn't wiped.
+    private func enterDatePhase() {
+        analyzer?.setMode(.date)
+        analyzer?.resetTransientState()
+        analyzer?.warmUp()
+        resetStability()
+        state = .scanning
+    }
+
+    private func resetBarcodeStability() {
+        consecutiveBarcodeCount = 0
+        lastStableBarcode = nil
     }
 
     private func handleResult(_ result: DateScanResult) {

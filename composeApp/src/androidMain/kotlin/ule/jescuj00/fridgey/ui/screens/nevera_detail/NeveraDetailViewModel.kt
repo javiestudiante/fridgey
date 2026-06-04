@@ -12,12 +12,14 @@ import kotlinx.coroutines.launch
 import ule.jescuj00.fridgey.data.repository.NeveraRepository
 import ule.jescuj00.fridgey.data.repository.ProductoRepository
 import ule.jescuj00.fridgey.domain.model.Producto
+import ule.jescuj00.fridgey.domain.model.Usuario
 
 data class NeveraDetailUiState(
     val isLoading: Boolean = true,
     val error: String? = null,
     val productos: List<Producto> = emptyList(),
-    val neveraNombre: String = ""
+    val neveraNombre: String = "",
+    val miembros: List<Usuario> = emptyList(),
 )
 
 class NeveraDetailViewModel(
@@ -35,7 +37,10 @@ class NeveraDetailViewModel(
         observeJob = viewModelScope.launch {
             try {
                 val nevera = neveraRepository.getNeveraById(neveraId, currentUserId)
-                _uiState.update { it.copy(neveraNombre = nevera?.nombre.orEmpty()) }
+                val miembros = neveraRepository.getMiembros(neveraId)
+                _uiState.update {
+                    it.copy(neveraNombre = nevera?.nombre.orEmpty(), miembros = miembros)
+                }
             } catch (e: Exception) {
                 _uiState.update { it.copy(error = e.message) }
             }

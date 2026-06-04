@@ -62,3 +62,27 @@ SELECT COUNT(*) FROM Producto WHERE id_nevera = ?;
 -- change, not just to changes inside a single fridge.
 countAll:
 SELECT COUNT(*) FROM Producto;
+
+-- Count of products in a fridge expiring on or before :threshold (the
+-- "por caducar" stat on the NeveraCard). :threshold is the epoch-seconds of
+-- midnight-UTC of (today + N days), matching how fecha_caducidad is stored;
+-- this therefore counts products with diasRestantes <= N (expired included).
+countExpiringByNevera:
+SELECT COUNT(*) FROM Producto
+WHERE id_nevera = :neveraId AND fecha_caducidad <= :threshold;
+
+-- Products expiring EXACTLY on :hoy across every fridge the user owns or
+-- collaborates in — feeds the cross-fridge "caducan hoy" home banner. :hoy is
+-- the epoch-seconds of midnight-UTC of today. Returns the product name and its
+-- fridge name so the banner can build "N productos caducan hoy en {fridge}".
+selectExpiringTodayForUsuario:
+SELECT p.id AS id, p.id_nevera AS nevera_id, p.nombre AS producto_nombre, n.nombre AS nevera_nombre
+FROM Producto p
+INNER JOIN Nevera n ON p.id_nevera = n.id
+WHERE p.fecha_caducidad = :hoy
+  AND p.id_nevera IN (
+      SELECT id FROM Nevera WHERE id_propietario = :usuarioId
+      UNION
+      SELECT id_nevera FROM NeveraColaborador WHERE id_usuario = :usuarioId
+  )
+ORDER BY p.nombre ASC;

@@ -20,6 +20,7 @@ import kotlinx.coroutines.launch
 import kotlinx.datetime.LocalDate
 import org.koin.androidx.compose.koinViewModel
 import org.koin.compose.koinInject
+import ule.jescuj00.fridgey.domain.model.ProductAutoFill
 import ule.jescuj00.fridgey.domain.model.auth.AuthState
 import ule.jescuj00.fridgey.domain.usecase.auth.ObserveAuthStateUseCase
 import ule.jescuj00.fridgey.domain.usecase.auth.SignOutUseCase
@@ -149,6 +150,16 @@ private fun AuthenticatedGraph(
             val scannedDate by savedStateHandle
                 .getStateFlow<String?>(SCANNED_DATE_KEY, null)
                 .collectAsState()
+            // Receive the Open Food Facts autofill (JSON) from the CÓDIGO phase.
+            val scannedAutoFill by savedStateHandle
+                .getStateFlow<String?>(SCANNED_AUTOFILL_KEY, null)
+                .collectAsState()
+
+            LaunchedEffect(scannedAutoFill) {
+                val json = scannedAutoFill ?: return@LaunchedEffect
+                ProductAutoFill.fromJsonOrNull(json)?.let { viewModel.onScannedProductReceived(it) }
+                savedStateHandle[SCANNED_AUTOFILL_KEY] = null
+            }
 
             LaunchedEffect(scannedDate) {
                 val iso = scannedDate ?: return@LaunchedEffect
@@ -169,12 +180,14 @@ private fun AuthenticatedGraph(
 
         composable(Screen.DateScanner.route) {
             DateScannerScreen(
-                onDatePicked = { date: LocalDate ->
-                    // Hand the date back to the previous screen (AddProducto)
-                    // as an ISO string. LocalDate's toString() is yyyy-MM-dd.
-                    navController.previousBackStackEntry
-                        ?.savedStateHandle
-                        ?.set(SCANNED_DATE_KEY, date.toString())
+                onDatePicked = { date: LocalDate, autoFill: ProductAutoFill? ->
+                    // Hand the date (ISO yyyy-MM-dd) and, if the barcode phase
+                    // resolved anything, the autofill (JSON) back to AddProducto.
+                    val prev = navController.previousBackStackEntry?.savedStateHandle
+                    prev?.set(SCANNED_DATE_KEY, date.toString())
+                    if (autoFill != null) {
+                        prev?.set(SCANNED_AUTOFILL_KEY, autoFill.toJson())
+                    }
                     navController.popBackStack()
                 },
                 onManualEntry = { navController.popBackStack() },

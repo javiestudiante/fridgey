@@ -10,15 +10,28 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import ule.jescuj00.fridgey.ui.theme.FridgeySectionCount
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import ule.jescuj00.fridgey.ui.theme.Ink
-import ule.jescuj00.fridgey.ui.theme.LocalFridgeySpacing
+import ule.jescuj00.fridgey.ui.theme.InkMuted
+import ule.jescuj00.fridgey.ui.theme.InstrumentSerif
+
+private val SectionTitleStyle = TextStyle(
+    fontFamily = InstrumentSerif, fontWeight = FontWeight.Normal,
+    fontSize = 20.sp, lineHeight = 24.sp, letterSpacing = (-0.2).sp,
+)
 
 /**
- * Inline section header used inside a screen.
- * Serif title on the left, optional zero-padded counter ("02") on the right.
- * `accentColor` lets callers tint both title and counter for status
- * sections (rust for "Caduca ya", amber for "Esta semana", etc).
+ * Inline section header: serif title (20) on the left, optional zero-padded
+ * mono counter ("02", ink-3) on the right. [accentColor] tints the TITLE for
+ * the urgency sections of the detail screen (rust "Caduca ya", amber "Esta
+ * semana", ink "Más adelante"); the counter stays ink-3.
+ *
+ * Padding: 22 top / 22 horizontal / [bottomPadding] bottom (8 on the home
+ * "Tus neveras" header, 10 on the detail urgency heads — per the design).
  */
 @Composable
 fun SectionHeader(
@@ -26,30 +39,21 @@ fun SectionHeader(
     modifier: Modifier = Modifier,
     count: Int? = null,
     accentColor: Color = Ink,
+    bottomPadding: Dp = 10.dp,
 ) {
-    val spacing = LocalFridgeySpacing.current
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .padding(
-                start = spacing.lg,
-                end = spacing.lg,
-                top = spacing.xl,
-                bottom = spacing.sm,
-            ),
+            .padding(start = 22.dp, end = 22.dp, top = 22.dp, bottom = bottomPadding),
         verticalAlignment = Alignment.Bottom,
     ) {
-        Text(
-            text = title,
-            style = MaterialTheme.typography.headlineMedium,
-            color = accentColor,
-        )
+        Text(text = title, style = SectionTitleStyle, color = accentColor)
         if (count != null) {
             Spacer(modifier = Modifier.weight(1f))
             Text(
                 text = "%02d".format(count),
-                style = FridgeySectionCount,
-                color = accentColor,
+                style = MaterialTheme.typography.labelSmall,  // JetBrains Mono 11
+                color = InkMuted,
             )
         }
     }

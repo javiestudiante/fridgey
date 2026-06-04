@@ -8,32 +8,26 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.launch
 import ule.jescuj00.fridgey.data.repository.NeveraRepository
-import ule.jescuj00.fridgey.domain.model.NeveraResumen
+import ule.jescuj00.fridgey.domain.model.ExpiringTodaySummary
 
 /**
- * Bridges the Kotlin `Flow<List<NeveraResumen>>` (the "Mis neveras" home
- * feed: each fridge + product/por-caducar counts + members) to a
- * callback-based API SwiftUI can subscribe to. Same pattern as
- * [ule.jescuj00.fridgey.data.binders.ProductoListBinder] — Kotlin/Native
- * does not expose `Flow<T>` to Swift in a usable form, so we wrap the
- * collection in a long-lived coroutine and forward each value through
- * a Swift-set lambda.
+ * Bridges the cross-fridge `Flow<ExpiringTodaySummary>` ("caducan hoy" home
+ * banner) to a Swift callback. Same pattern as [NeveraListBinder].
  */
-class NeveraListBinder(
+class ExpiringTodayBinder(
     private val neveraRepository: NeveraRepository
 ) {
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
     private var job: Job? = null
 
-    /** Starts (or restarts) collection for [usuarioId]. */
     fun start(
         usuarioId: String,
-        onValue: (List<NeveraResumen>) -> Unit,
+        onValue: (ExpiringTodaySummary) -> Unit,
         onError: (Throwable) -> Unit
     ) {
         job?.cancel()
         job = scope.launch {
-            neveraRepository.observeNeverasResumen(usuarioId)
+            neveraRepository.observeExpiringTodaySummary(usuarioId)
                 .catch { e -> onError(e) }
                 .collect { onValue(it) }
         }
@@ -44,7 +38,6 @@ class NeveraListBinder(
         job = null
     }
 
-    /** Call from Swift `deinit` to release the underlying scope. */
     fun dispose() {
         stop()
         scope.cancel()

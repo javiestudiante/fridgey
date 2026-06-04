@@ -3,36 +3,31 @@ import Shared
 
 /// SwiftUI ObservableObject mirroring the Android `NeveraListViewModel`.
 ///
-/// Subscribes to a Kotlin `Flow<List<Nevera>>` exposed via
-/// [NeveraListBinder] (same pattern as `NeveraDetailViewModel` does with
-/// `ProductoListBinder`), so the list re-renders automatically whenever a
-/// fridge or its products change — no manual reload after create/delete.
-///
-/// `CreateNeveraUseCase` (for create) and `NeveraRepository` (for delete)
-/// are still consumed as one-shot calls; the binder keeps the list in sync
-/// after either of those completes.
+/// Subscribes to the reactive home feed: per-fridge resúmenes
+/// (`NeveraListBinder` → `Flow<List<NeveraResumen>>`) AND the cross-fridge
+/// "caducan hoy" summary (`ExpiringTodayBinder`). `CreateNeveraUseCase` is a
+/// one-shot; the binders re-emit on success.
 @MainActor
 final class NeveraListViewModel: ObservableObject {
 
     struct State {
         var isLoading: Bool = true
         var error: String? = nil
-        var neveras: [Nevera] = []
+        var neveras: [NeveraResumen] = []
+        var expiringToday: ExpiringTodaySummary? = nil
     }
 
     @Published var state = State()
 
     private let currentUserId: String
-    private let neveraRepository = KoinIosKt.getNeveraRepository()
     private let createNeveraUseCase = KoinIosKt.getCreateNeveraUseCase()
     private let binder: NeveraListBinder = KoinIosKt.getNeveraListBinder()
+    private let expiringBinder: ExpiringTodayBinder = KoinIosKt.getExpiringTodayBinder()
 
     init(currentUserId: String) {
         self.currentUserId = currentUserId
     }
 
-    /// Starts (or restarts) the reactive subscription. Idempotent on the
-    /// binder side — repeated calls cancel the previous job.
     func start() {
         binder.start(
             usuarioId: currentUserId,
@@ -41,7 +36,7 @@ final class NeveraListViewModel: ObservableObject {
                     guard let self = self else { return }
                     self.state.isLoading = false
                     self.state.error = nil
-                    self.state.neveras = (neveras as? [Nevera]) ?? []
+                    self.state.neveras = (neveras as? [NeveraResumen]) ?? []
                 }
             },
             onError: { [weak self] error in
@@ -52,21 +47,28 @@ final class NeveraListViewModel: ObservableObject {
                 }
             }
         )
+        expiringBinder.start(
+            usuarioId: currentUserId,
+            onValue: { [weak self] summary in
+                Task { @MainActor [weak self] in
+                    self?.state.expiringToday = summary
+                }
+            },
+            onError: { _ in /* banner is best-effort; ignore its errors */ }
+        )
     }
 
-    /// Cancels the active subscription but keeps the binder's scope alive,
-    /// so a later `start()` (e.g. when navigating back from detail) can
-    /// resubscribe. Hard cleanup happens in `deinit`.
     func stop() {
         binder.stop()
+        expiringBinder.stop()
     }
 
     deinit {
         binder.dispose()
+        expiringBinder.dispose()
     }
 
-    /// Mirror of `CreateNeveraUseCase`: validates name + 10-fridge cap and
-    /// inserts. The Flow re-emits on success — no manual reload.
+    /// Mirror of `CreateNeveraUseCase`. The Flow re-emits on success.
     func createNevera(name: String) {
         let trimmed = name.trimmingCharacters(in: .whitespaces)
         guard !trimmed.isEmpty else {
@@ -74,37 +76,15 @@ final class NeveraListViewModel: ObservableObject {
             return
         }
         state.error = nil
-
-        createNeveraUseCase.invoke(
-            nombre: trimmed,
-            idPropietario: currentUserId
-        ) { [weak self] result, error in
+        createNeveraUseCase.invoke(nombre: trimmed, idPropietario: currentUserId) { [weak self] result, error in
             Task { @MainActor [weak self] in
                 guard let self = self else { return }
                 if let error = error {
                     self.state.error = error.localizedDescription
-                    return
-                }
-                if result is OperationResultSuccess<NSString> {
-                    // No-op: NeveraListBinder will re-emit with the new fridge.
                 } else if let opError = result as? OperationResultError {
                     self.state.error = opError.message
-                } else {
-                    self.state.error = "Resultado inesperado al crear nevera"
                 }
-            }
-        }
-    }
-
-    /// Deleting a fridge cascades to its products and collaborator rows
-    /// (FK ON DELETE CASCADE). The Flow re-emits on success — no manual reload.
-    func deleteNevera(_ nevera: Nevera) {
-        Task { @MainActor [weak self] in
-            guard let self = self else { return }
-            do {
-                try await self.neveraRepository.deleteNevera(neveraId: nevera.id)
-            } catch {
-                self.state.error = error.localizedDescription
+                // success → binder re-emits.
             }
         }
     }

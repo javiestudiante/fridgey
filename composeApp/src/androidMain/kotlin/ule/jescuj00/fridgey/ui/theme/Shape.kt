@@ -13,3 +13,9 @@ val FridgeyShapes = Shapes(
 )
 
 val PillShape = RoundedCornerShape(999.dp)
+
+// Radios concretos del diseño de neveras (fuera del set M3 Shapes).
+val NeveraCardShape = RoundedCornerShape(22.dp)  // tarjeta de nevera
+val ShelfShape = RoundedCornerShape(18.dp)       // balda / shelf del detalle
+val EmojiIconShape = RoundedCornerShape(14.dp)   // icono emoji de producto
+val BackButtonShape = RoundedCornerShape(12.dp)  // botón back/bell cuadrado

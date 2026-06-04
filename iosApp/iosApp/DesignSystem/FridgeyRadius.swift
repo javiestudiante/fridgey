@@ -6,4 +6,10 @@ enum FridgeyRadius {
     static let md:   CGFloat = 16
     static let lg:   CGFloat = 20
     static let pill: CGFloat = 999
+
+    // Radios del diseño de neveras.
+    static let card:       CGFloat = 22   // tarjeta de nevera
+    static let shelf:      CGFloat = 18   // balda del detalle
+    static let emojiIcon:  CGFloat = 14   // burbuja emoji
+    static let backButton: CGFloat = 12   // botón back/bell cuadrado
 }

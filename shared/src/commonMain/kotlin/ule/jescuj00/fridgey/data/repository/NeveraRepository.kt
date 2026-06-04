@@ -7,12 +7,21 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 import kotlinx.datetime.Clock
+import kotlinx.datetime.DateTimeUnit
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.atStartOfDayIn
+import kotlinx.datetime.plus
+import kotlinx.datetime.todayIn
 import ule.jescuj00.fridgey.database.NeveraColaboradorQueries
 import ule.jescuj00.fridgey.database.NeveraQueries
 import ule.jescuj00.fridgey.database.ProductoQueries
+import ule.jescuj00.fridgey.database.UsuarioQueries
+import ule.jescuj00.fridgey.domain.model.ExpiringTodaySummary
 import ule.jescuj00.fridgey.domain.model.Nevera
+import ule.jescuj00.fridgey.domain.model.NeveraResumen
 import ule.jescuj00.fridgey.domain.model.Proveedor
 import ule.jescuj00.fridgey.domain.model.Usuario
 import kotlin.uuid.ExperimentalUuidApi
@@ -21,8 +30,15 @@ import kotlin.uuid.Uuid
 class NeveraRepository(
     private val neveraQueries: NeveraQueries,
     private val colaboradorQueries: NeveraColaboradorQueries,
-    private val productoQueries: ProductoQueries
+    private val productoQueries: ProductoQueries,
+    private val usuarioQueries: UsuarioQueries
 ) {
+
+    private companion object {
+        /** Days-ahead window for the "por caducar" stat. Matches the design's
+         *  section cut for "caduca ya" + "esta semana" (diasRestantes <= 7). */
+        const val EXPIRING_SOON_DAYS = 7
+    }
 
     /**
      * Returns all fridges the user owns or collaborates in.
@@ -67,6 +83,98 @@ class NeveraRepository(
             }
         }.flowOn(Dispatchers.Default)
     }
+
+    /**
+     * Reactive "Mis neveras" home feed: each fridge with its product count,
+     * its "por caducar" count, and its members (owner + collaborators). Built
+     * from existing data — no activity tracking. Re-emits on any Producto
+     * change (via [ProductoQueries.countAll]) and on Nevera/colaborador
+     * changes (the underlying `selectByUsuario` LEFT-JOINs NeveraColaborador).
+     */
+    fun observeNeverasResumen(usuarioId: String): Flow<List<NeveraResumen>> {
+        val neverasFlow = neveraQueries.selectByUsuario(usuarioId)
+            .asFlow()
+            .mapToList(Dispatchers.Default)
+
+        val productosTrigger = productoQueries.countAll()
+            .asFlow()
+            .mapToOne(Dispatchers.Default)
+
+        return combine(neverasFlow, productosTrigger) { rows, _ ->
+            val threshold = expiringSoonThresholdEpoch()
+            rows.map { row ->
+                val nevera = row.toDomain(
+                    esPropietario = row.id_propietario == usuarioId,
+                    numeroProductos = productoQueries.countByNevera(row.id).executeAsOne().toInt()
+                )
+                val expiringCount = productoQueries
+                    .countExpiringByNevera(neveraId = row.id, threshold = threshold)
+                    .executeAsOne().toInt()
+                NeveraResumen(
+                    nevera = nevera,
+                    expiringCount = expiringCount,
+                    miembros = membersOf(neveraId = row.id, ownerId = row.id_propietario),
+                )
+            }
+        }.flowOn(Dispatchers.Default)
+    }
+
+    /**
+     * Reactive cross-fridge "caducan hoy" summary for the home banner. Emits
+     * total + product names + (single) fridge name. Re-emits on any change to
+     * the joined tables (Producto / Nevera / NeveraColaborador).
+     */
+    fun observeExpiringTodaySummary(usuarioId: String): Flow<ExpiringTodaySummary> {
+        val hoy = todayEpoch()
+        return productoQueries.selectExpiringTodayForUsuario(hoy = hoy, usuarioId = usuarioId)
+            .asFlow()
+            .mapToList(Dispatchers.Default)
+            .map { rows ->
+                ExpiringTodaySummary(
+                    total = rows.size,
+                    productNames = rows.map { it.producto_nombre },
+                    // Only name / link the fridge when every product shares one.
+                    neveraNombre = rows.map { it.nevera_nombre }.distinct().singleOrNull(),
+                    neveraId = rows.map { it.nevera_id }.distinct().singleOrNull(),
+                )
+            }
+            .flowOn(Dispatchers.Default)
+    }
+
+    /** Owner + collaborators of a fridge — one-shot (detail header avatars). */
+    suspend fun getMiembros(neveraId: String): List<Usuario> = withContext(Dispatchers.Default) {
+        val ownerId = neveraQueries.selectById(neveraId).executeAsOneOrNull()?.id_propietario
+            ?: return@withContext emptyList()
+        membersOf(neveraId, ownerId)
+    }
+
+    /** Owner + collaborators of a fridge (for the avatar stack / MIEMBROS). */
+    private fun membersOf(neveraId: String, ownerId: String): List<Usuario> {
+        val owner = usuarioQueries.selectById(ownerId).executeAsOneOrNull()?.toDomainUsuario()
+        val colaboradores = colaboradorQueries.selectUsuariosByNevera(neveraId)
+            .executeAsList().map { it.toDomainUsuario() }
+        return listOfNotNull(owner) + colaboradores
+    }
+
+    /** Epoch-seconds of midnight-UTC of today (matches fecha_caducidad storage). */
+    private fun todayEpoch(): Long =
+        Clock.System.todayIn(TimeZone.currentSystemDefault())
+            .atStartOfDayIn(TimeZone.UTC).epochSeconds
+
+    /** Epoch-seconds threshold for "expires within EXPIRING_SOON_DAYS days". */
+    private fun expiringSoonThresholdEpoch(): Long =
+        Clock.System.todayIn(TimeZone.currentSystemDefault())
+            .plus(EXPIRING_SOON_DAYS, DateTimeUnit.DAY)
+            .atStartOfDayIn(TimeZone.UTC).epochSeconds
+
+    private fun ule.jescuj00.fridgey.database.Usuario.toDomainUsuario(): Usuario =
+        Usuario(
+            id = id,
+            email = email,
+            nombre = nombre,
+            proveedor = Proveedor.fromString(proveedor),
+            fotoUrl = foto_url,
+        )
 
     suspend fun getNeveraById(neveraId: String, currentUserId: String): Nevera? =
         withContext(Dispatchers.Default) {

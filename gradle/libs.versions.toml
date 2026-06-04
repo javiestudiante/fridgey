@@ -19,6 +19,7 @@ kotlinx-coroutines = "1.9.0"
 ktor = "3.0.3"                # 3.0.x shares kotlinx-coroutines 1.9.0 with the rest of the stack
 kotlinx-serialization = "1.7.3"
 mlkit-text-recognition = "16.0.1"
+mlkit-barcode-scanning = "17.3.0"
 koin = "4.0.0"
 androidx-navigation = "2.8.5"
 coil = "3.0.4"
@@ -63,6 +64,7 @@ ktor-client-okhttp = { module = "io.ktor:ktor-client-okhttp", version.ref = "kto
 ktor-client-darwin = { module = "io.ktor:ktor-client-darwin", version.ref = "ktor" }       # iOS engine
 kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinx-serialization" }
 mlkit-text-recognition = { module = "com.google.mlkit:text-recognition", version.ref = "mlkit-text-recognition" }
+mlkit-barcode-scanning = { module = "com.google.mlkit:barcode-scanning", version.ref = "mlkit-barcode-scanning" }
 koin-core = { module = "io.insert-koin:koin-core", version.ref = "koin" }
 koin-android = { module = "io.insert-koin:koin-android", version.ref = "koin" }
 koin-androidx-compose = { module = "io.insert-koin:koin-androidx-compose", version.ref = "koin" }

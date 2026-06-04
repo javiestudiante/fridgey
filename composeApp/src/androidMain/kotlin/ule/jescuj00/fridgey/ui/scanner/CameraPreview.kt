@@ -44,7 +44,7 @@ import kotlinx.coroutines.suspendCancellableCoroutine
  */
 @Composable
 fun CameraPreview(
-    analyzer: FrameAnalyzer,
+    analyzer: ImageAnalysis.Analyzer,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current

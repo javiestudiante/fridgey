@@ -6,8 +6,10 @@ import io.ktor.serialization.kotlinx.json.json
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 import ule.jescuj00.fridgey.data.repository.ProductLookupRepository
+import ule.jescuj00.fridgey.domain.model.Categoria
 import ule.jescuj00.fridgey.domain.model.ProductLookupResult
 import ule.jescuj00.fridgey.domain.model.UnidadMedida
+import ule.jescuj00.fridgey.domain.usecase.MapOffCategoryUseCase
 import ule.jescuj00.fridgey.domain.usecase.ParseQuantityUseCase
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -26,7 +28,11 @@ class OpenFoodFactsLookupTest {
                 json(Json { ignoreUnknownKeys = true; isLenient = true })
             }
         }
-        return ProductLookupRepository(OpenFoodFactsApi(client), ParseQuantityUseCase())
+        return ProductLookupRepository(
+            OpenFoodFactsApi(client),
+            ParseQuantityUseCase(),
+            MapOffCategoryUseCase(),
+        )
     }
 
     @Test
@@ -47,10 +53,12 @@ class OpenFoodFactsLookupTest {
         println("[OFF] Coca-Cola -> $result")
         assertTrue(result is ProductLookupResult.Found, "expected Found, got $result")
         val p = (result as ProductLookupResult.Found).product
-        println("[OFF] Coca-Cola cantidad=${p.cantidad} unidad=${p.unidad} nombre=${p.nombre}")
+        println("[OFF] Coca-Cola cantidad=${p.cantidad} unidad=${p.unidad} nombre=${p.nombre} categoria=${p.categoria}")
         // "33 cl" -> 330 ml
         assertEquals(UnidadMedida.MILILITROS, p.unidad)
         assertEquals(330.0, p.cantidad)
+        // Mejora 1 end-to-end: OFF's `en:sodas`/`en:colas` tags → BEBIDAS.
+        assertEquals(Categoria.BEBIDAS, p.categoria, "expected BEBIDAS from OFF tags")
     }
 
     @Test

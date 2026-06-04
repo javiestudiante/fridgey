@@ -44,7 +44,11 @@ struct DateScannerView: View {
 
     let onCancel: () -> Void
     let onDatePicked: (Kotlinx_datetimeLocalDate, ProductAutoFill?) -> Void
-    let onManualEntry: () -> Void
+    // Carries whatever the CÓDIGO phase resolved (name + category + cantidad +
+    // unit + image + barcode), so the manual route arrives pre-filled with
+    // everything except the date. Nil when no barcode was scanned (user tapped
+    // "manual" while still in the barcode phase) → manual entry from scratch.
+    let onManualEntry: (ProductAutoFill?) -> Void
 
     @StateObject private var viewModel = DateScannerViewModel()
 
@@ -113,7 +117,8 @@ struct DateScannerView: View {
                 // Hand back both the date and whatever the CODE phase resolved.
                 onDatePicked(date, viewModel.pendingAutoFill)
             case .manualEntryRequested:
-                onManualEntry()
+                // Same autofill the date path carries — just without a date.
+                onManualEntry(viewModel.pendingAutoFill)
             }
         }
     }

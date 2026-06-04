@@ -4,6 +4,8 @@ import io.mockk.mockk
 import kotlinx.datetime.LocalDate
 import ule.jescuj00.fridgey.data.repository.ProductoRepository
 import ule.jescuj00.fridgey.domain.model.Categoria
+import ule.jescuj00.fridgey.domain.model.ProductAutoFill
+import ule.jescuj00.fridgey.domain.model.UnidadMedida
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -93,5 +95,58 @@ class AddProductoViewModelTest {
         val vm = newVm()
         vm.onCategoriaSelected(Categoria.LACTEOS)
         assertFalse(vm.uiState.value.isFormPristine)
+    }
+
+    // -- Mejora 1: the OFF-inferred category is preselected from the autofill --
+
+    /**
+     * The whole point of Mejora 1: an autofill carrying an inferred category
+     * must preselect it. And — subtly — the OFF-parsed unit must SURVIVE: a
+     * Coca-Cola comes back as BEBIDAS + MILILITROS (330 ml), and BEBIDAS'
+     * `unidadDefault` is LITROS, so if `onScannedProductReceived` ever routed
+     * through `onCategoriaSelected` the unit would be wrongly snapped to L.
+     */
+    @Test
+    fun onScannedProductReceived_preselectsInferredCategory_andKeepsOffUnit() {
+        val vm = newVm()
+        val autofill = ProductAutoFill(
+            codigoBarras = "5449000000996",
+            nombre = "Coca-Cola (Coca-Cola)",
+            cantidad = 330.0,
+            unidad = UnidadMedida.MILILITROS,
+            imagenUrl = "https://img/cocacola.jpg",
+            categoria = Categoria.BEBIDAS,
+        )
+
+        vm.onScannedProductReceived(autofill)
+
+        val s = vm.uiState.value
+        assertEquals(Categoria.BEBIDAS, s.categoria, "inferred category must be preselected")
+        assertEquals(UnidadMedida.MILILITROS, s.unidad, "OFF unit must NOT snap to category default")
+        assertEquals("Coca-Cola (Coca-Cola)", s.name)
+        assertEquals(330.0, s.cantidad)
+        assertEquals("5449000000996", s.codigoBarras)
+        assertEquals("https://img/cocacola.jpg", s.imagenUrl)
+        assertFalse(s.isFormPristine, "autofill must mark form dirty")
+    }
+
+    /** Lookup miss / no product name: keep whatever the user already typed. */
+    @Test
+    fun onScannedProductReceived_blankName_keepsExistingName() {
+        val vm = newVm()
+        vm.onNameChanged("Mi yogur")
+        val autofill = ProductAutoFill(
+            codigoBarras = "123",
+            nombre = "",
+            cantidad = 1.0,
+            unidad = UnidadMedida.UNIDADES,
+            imagenUrl = null,
+            categoria = Categoria.OTROS,
+        )
+
+        vm.onScannedProductReceived(autofill)
+
+        assertEquals("Mi yogur", vm.uiState.value.name)
+        assertEquals("123", vm.uiState.value.codigoBarras)
     }
 }

@@ -27,6 +27,7 @@ class OpenFoodFactsApi(private val client: HttpClient) {
     companion object {
         const val BASE_URL = "https://world.openfoodfacts.org"
         const val USER_AGENT = "Fridgey/1.0 (jescuj00@estudiantes.unileon.es)"
-        const val FIELDS = "product_name,product_name_es,brands,quantity,image_url"
+        const val FIELDS =
+            "product_name,product_name_es,brands,quantity,image_url,categories_tags"
     }
 }

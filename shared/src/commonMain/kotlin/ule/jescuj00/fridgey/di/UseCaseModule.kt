@@ -7,6 +7,7 @@ import ule.jescuj00.fridgey.domain.scanner.TextRecognizer
 import ule.jescuj00.fridgey.domain.usecase.AddColaboradorUseCase
 import ule.jescuj00.fridgey.domain.usecase.CreateNeveraUseCase
 import ule.jescuj00.fridgey.domain.usecase.LookupProductByBarcodeUseCase
+import ule.jescuj00.fridgey.domain.usecase.MapOffCategoryUseCase
 import ule.jescuj00.fridgey.domain.usecase.ParseQuantityUseCase
 import ule.jescuj00.fridgey.domain.usecase.RemoveColaboradorUseCase
 import ule.jescuj00.fridgey.domain.usecase.ScanExpirationDateUseCase
@@ -33,6 +34,7 @@ val useCaseModule: Module = module {
     factory { RemoveColaboradorUseCase(get()) }
     factory { ScanExpirationDateUseCase(get()) }
     factory { ParseQuantityUseCase() }
+    factory { MapOffCategoryUseCase() }
     factory { LookupProductByBarcodeUseCase(get()) }
 
     factory { SignInWithGoogleUseCase(get(), get()) }

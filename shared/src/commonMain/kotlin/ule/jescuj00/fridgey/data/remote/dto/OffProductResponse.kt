@@ -25,4 +25,10 @@ data class OffProduct(
     val brands: String? = null,
     val quantity: String? = null,
     @SerialName("image_url") val imageUrl: String? = null,
+    /**
+     * Hierarchical OFF taxonomy tags, `en:`-prefixed and ordered generic →
+     * specific (e.g. `["en:beverages", …, "en:orange-juices"]`). Fed to
+     * `MapOffCategoryUseCase` to infer a Fridgey [Categoria].
+     */
+    @SerialName("categories_tags") val categoriesTags: List<String>? = null,
 )

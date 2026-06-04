@@ -34,5 +34,5 @@ val networkModule: Module = module {
         }
     }
     single { OpenFoodFactsApi(get()) }
-    single { ProductLookupRepository(get(), get()) }
+    single { ProductLookupRepository(get(), get(), get()) }
 }

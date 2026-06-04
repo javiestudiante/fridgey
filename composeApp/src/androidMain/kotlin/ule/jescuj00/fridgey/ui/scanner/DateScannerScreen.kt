@@ -76,7 +76,11 @@ private val chipDateFormatter: DateTimeFormatter =
 @Composable
 fun DateScannerScreen(
     onDatePicked: (LocalDate, ProductAutoFill?) -> Unit,
-    onManualEntry: () -> Unit,
+    // Carries whatever the CÓDIGO phase resolved (name + category + cantidad +
+    // unit + image + barcode), so the manual route arrives pre-filled with
+    // everything except the date. Null when no barcode was scanned (user tapped
+    // "manual" while still in the barcode phase) → manual entry from scratch.
+    onManualEntry: (ProductAutoFill?) -> Unit,
     onCancel: () -> Unit,
     viewModel: DateScannerViewModel = koinViewModel(),
 ) {
@@ -126,7 +130,8 @@ fun DateScannerScreen(
                 // Hand back both the captured date and whatever the CODE phase
                 // resolved from Open Food Facts (barcode + name + cantidad…).
                 is ScannerEvent.DatePicked -> onDatePicked(event.date, viewModel.pendingAutoFill)
-                ScannerEvent.ManualEntryRequested -> onManualEntry()
+                // Same autofill the date path carries — just without a date.
+                ScannerEvent.ManualEntryRequested -> onManualEntry(viewModel.pendingAutoFill)
             }
         }
     }

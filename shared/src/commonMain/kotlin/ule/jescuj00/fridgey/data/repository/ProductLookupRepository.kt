@@ -5,6 +5,7 @@ import ule.jescuj00.fridgey.data.remote.OpenFoodFactsApi
 import ule.jescuj00.fridgey.domain.model.Categoria
 import ule.jescuj00.fridgey.domain.model.ProductAutoFill
 import ule.jescuj00.fridgey.domain.model.ProductLookupResult
+import ule.jescuj00.fridgey.domain.usecase.MapOffCategoryUseCase
 import ule.jescuj00.fridgey.domain.usecase.ParseQuantityUseCase
 
 /**
@@ -16,6 +17,7 @@ import ule.jescuj00.fridgey.domain.usecase.ParseQuantityUseCase
 class ProductLookupRepository(
     private val api: OpenFoodFactsApi,
     private val parseQuantity: ParseQuantityUseCase,
+    private val mapCategory: MapOffCategoryUseCase,
 ) {
     suspend fun lookup(barcode: String): ProductLookupResult {
         val response = try {
@@ -34,7 +36,11 @@ class ProductLookupRepository(
         val baseName = product.productNameEs?.takeIf { it.isNotBlank() }
             ?: product.productName?.takeIf { it.isNotBlank() }
             ?: ""
-        val parsed = parseQuantity(product.quantity, fallbackUnit = Categoria.OTROS.unidadDefault)
+        // Infer the category FIRST so the quantity parser can fall back to the
+        // INFERRED category's default unit (not OTROS) when OFF gives no usable
+        // quantity — e.g. a dairy with no `quantity` lands on LITROS, not UNIDADES.
+        val categoria = mapCategory(product.categoriesTags)
+        val parsed = parseQuantity(product.quantity, fallbackUnit = categoria.unidadDefault)
 
         return ProductLookupResult.Found(
             ProductAutoFill(
@@ -43,9 +49,9 @@ class ProductLookupRepository(
                 cantidad = parsed.cantidad,
                 unidad = parsed.unidad,
                 imagenUrl = product.imageUrl?.takeIf { it.isNotBlank() },
-                // OFF's category taxonomy doesn't map cleanly to our enum;
-                // default to OTROS and let the user pick in AddProducto.
-                categoria = Categoria.OTROS,
+                // Inferred from OFF's `categories_tags`; OTROS when no keyword
+                // matches. Only a SUGGESTION — the user can change it.
+                categoria = categoria,
             )
         )
     }

@@ -190,7 +190,18 @@ private fun AuthenticatedGraph(
                     }
                     navController.popBackStack()
                 },
-                onManualEntry = { navController.popBackStack() },
+                onManualEntry = { autoFill ->
+                    // No date this route — but propagate the CÓDIGO-phase autofill
+                    // (if any) so AddProducto lands pre-filled and the user only
+                    // has to set the expiry date. Null → nothing to pre-fill
+                    // (manual entry from scratch).
+                    if (autoFill != null) {
+                        navController.previousBackStackEntry
+                            ?.savedStateHandle
+                            ?.set(SCANNED_AUTOFILL_KEY, autoFill.toJson())
+                    }
+                    navController.popBackStack()
+                },
                 onCancel = { navController.popBackStack() },
             )
         }

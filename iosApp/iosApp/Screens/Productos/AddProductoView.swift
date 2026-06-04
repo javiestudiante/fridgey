@@ -181,7 +181,16 @@ struct AddProductoView: View {
                         viewModel.onScannedDateReceived(date)
                         showScanner = false
                     },
-                    onManualEntry: { showScanner = false }
+                    onManualEntry: { autoFill in
+                        // No date this route — but apply the CÓDIGO-phase autofill
+                        // (if any) so the form lands pre-filled and only the expiry
+                        // date is left to set. Nil → nothing to pre-fill (manual
+                        // entry from scratch).
+                        if let autoFill = autoFill {
+                            viewModel.onScannedProductReceived(autoFill)
+                        }
+                        showScanner = false
+                    }
                 )
             }
             .sheet(item: $activeSheet) { sheet in

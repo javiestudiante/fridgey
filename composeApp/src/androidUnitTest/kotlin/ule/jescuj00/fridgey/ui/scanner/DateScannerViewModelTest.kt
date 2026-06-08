@@ -154,6 +154,21 @@ class DateScannerViewModelTest {
         assertEquals("", vm.pendingAutoFill?.nombre)
     }
 
+    @Test
+    fun rateLimited_setsDistinctBanner_keepsBarcode_andEntersDatePhase() = runTest {
+        val vm = newVm()
+        driveToDatePhase(vm, lookup = ProductLookupResult.RateLimited)
+
+        // Manual entry stays reachable (date phase opens) and the barcode is kept…
+        assertEquals(ScannerUiState.Scanning, vm.uiState.value)
+        assertEquals("8410000000000", vm.pendingAutoFill?.codigoBarras)
+        // …but the banner is the rate-limit one, NOT "no encontrado".
+        assertTrue(
+            vm.productBanner.value?.contains("Demasiadas consultas") == true,
+            "expected a distinct rate-limit banner, got: ${vm.productBanner.value}",
+        )
+    }
+
     // ---- DATE phase (pre-existing OCR logic, now reached via the barcode phase) ----
 
     @Test

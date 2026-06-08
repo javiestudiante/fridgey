@@ -226,6 +226,11 @@ final class DateScannerViewModel: ObservableObject {
         case is ProductLookupResultNetworkError:
             pendingAutoFill = barcodeOnly(barcode)
             productBanner = "Sin conexión con Open Food Facts · introdúcelo a mano"
+        case is ProductLookupResultRateLimited:
+            // HTTP 429 — distinct from "not found": a temporary limit. Manual
+            // entry stays available (the date phase still opens below).
+            pendingAutoFill = barcodeOnly(barcode)
+            productBanner = "Demasiadas consultas a Open Food Facts. Inténtalo en un momento o introduce el producto a mano."
         default:
             pendingAutoFill = barcodeOnly(barcode)
         }

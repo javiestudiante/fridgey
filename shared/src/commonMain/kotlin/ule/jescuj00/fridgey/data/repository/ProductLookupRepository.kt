@@ -1,6 +1,7 @@
 package ule.jescuj00.fridgey.data.repository
 
 import kotlinx.coroutines.CancellationException
+import ule.jescuj00.fridgey.data.remote.OffRateLimitException
 import ule.jescuj00.fridgey.data.remote.OpenFoodFactsApi
 import ule.jescuj00.fridgey.domain.model.Categoria
 import ule.jescuj00.fridgey.domain.model.ProductAutoFill
@@ -18,12 +19,14 @@ class ProductLookupRepository(
     private val api: OpenFoodFactsApi,
     private val parseQuantity: ParseQuantityUseCase,
     private val mapCategory: MapOffCategoryUseCase,
-) {
-    suspend fun lookup(barcode: String): ProductLookupResult {
+) : ProductLookupSource {
+    override suspend fun lookup(barcode: String): ProductLookupResult {
         val response = try {
             api.getProduct(barcode)
         } catch (e: CancellationException) {
             throw e            // never swallow coroutine cancellation
+        } catch (e: OffRateLimitException) {
+            return ProductLookupResult.RateLimited   // HTTP 429 — temporary, distinct from NotFound
         } catch (e: Exception) {
             return ProductLookupResult.NetworkError
         }

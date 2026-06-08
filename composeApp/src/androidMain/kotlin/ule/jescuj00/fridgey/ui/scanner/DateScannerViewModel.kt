@@ -227,6 +227,9 @@ class DateScannerViewModel(
                     barcodeOnly(barcode) to "Producto no encontrado · introdúcelo a mano"
                 ProductLookupResult.NetworkError ->
                     barcodeOnly(barcode) to "Sin conexión con Open Food Facts · introdúcelo a mano"
+                ProductLookupResult.RateLimited ->
+                    barcodeOnly(barcode) to
+                        "Demasiadas consultas a Open Food Facts. Inténtalo en un momento o introduce el producto a mano."
             }
             pendingAutoFill = autoFill
             _productBanner.value = banner

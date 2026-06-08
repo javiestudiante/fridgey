@@ -66,6 +66,9 @@ kotlin {
         }
         commonTest.dependencies {
             implementation(libs.kotlin.test)
+            // `runTest` for exercising suspend functions (cache / lookup) in
+            // commonTest without pulling in a platform test runner.
+            implementation(libs.kotlinx.coroutines.test)
         }
     }
 }

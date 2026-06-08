@@ -8,7 +8,9 @@ import kotlinx.serialization.json.Json
 import org.koin.core.module.Module
 import org.koin.dsl.module
 import ule.jescuj00.fridgey.data.remote.OpenFoodFactsApi
+import ule.jescuj00.fridgey.data.repository.CachingProductLookupRepository
 import ule.jescuj00.fridgey.data.repository.ProductLookupRepository
+import ule.jescuj00.fridgey.data.repository.ProductLookupSource
 
 /**
  * Wires the Ktor [HttpClient], the Open Food Facts API client and the lookup
@@ -34,5 +36,9 @@ val networkModule: Module = module {
         }
     }
     single { OpenFoodFactsApi(get()) }
+    // Real network-backed source (the decorator's delegate).
     single { ProductLookupRepository(get(), get(), get()) }
+    // Caching decorator IS the `ProductLookupSource` the use case receives.
+    // `single` so its in-memory cache is shared for the whole session.
+    single<ProductLookupSource> { CachingProductLookupRepository(get<ProductLookupRepository>()) }
 }

@@ -42,4 +42,14 @@ sealed interface ProductLookupResult {
     data class Found(val product: ProductAutoFill) : ProductLookupResult
     data object NotFound : ProductLookupResult
     data object NetworkError : ProductLookupResult
+
+    /**
+     * OFF answered HTTP 429 (per-user-IP rate limit, ~15 req/min). Transitory,
+     * like [NetworkError]: NOT cached, and the scanner shows a DISTINCT message
+     * so the user understands it's a temporary limit — not that the product is
+     * missing. Manual entry stays available. The user-facing copy lives in the
+     * scanner ViewModels (same place as the NotFound/NetworkError banners), not
+     * here, to keep the domain free of UI strings.
+     */
+    data object RateLimited : ProductLookupResult
 }

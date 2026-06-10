@@ -163,8 +163,6 @@
 				3B0FC6782FAC98BF00B253C4 /* fridgeyTests */,
 			);
 			name = fridgeyTests;
-			packageProductDependencies = (
-			);
 			productName = fridgeyTests;
 			productReference = 3B0FC6772FAC98BF00B253C4 /* fridgeyTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";

@@ -53,3 +53,43 @@ extension Categoria {
 
 extension Nevera: Identifiable {}
 extension Producto: Identifiable {}
+
+// MARK: - ResultadoInvitacion (sealed) → Swift enum
+
+/// Swift-side mirror of the Kotlin sealed `ResultadoInvitacion` (UC-03b).
+///
+/// Kotlin/Native exports the sealed interface as an ObjC protocol plus
+/// concrete classes, which Swift cannot `switch` over exhaustively — this
+/// closed enum restores that guarantee: the mapping below covers all 7
+/// Kotlin cases (the Kotlin compiler enforces exhaustiveness on its side)
+/// and any future, unmapped case fails SAFE into `.error` instead of
+/// crashing.
+enum ResultadoInvitacionUI {
+    case aceptada(neveraId: String, nombreNevera: String)
+    case yaEresMiembro(neveraId: String, nombreNevera: String)
+    case noEncontrada
+    case expirada
+    case yaUsada
+    case neveraLlena
+    case error(String)
+
+    init(_ kotlin: ResultadoInvitacion) {
+        if let r = kotlin as? ResultadoInvitacionAceptada {
+            self = .aceptada(neveraId: r.neveraId, nombreNevera: r.nombreNevera)
+        } else if let r = kotlin as? ResultadoInvitacionYaEresMiembro {
+            self = .yaEresMiembro(neveraId: r.neveraId, nombreNevera: r.nombreNevera)
+        } else if kotlin is ResultadoInvitacionNoEncontrada {
+            self = .noEncontrada
+        } else if kotlin is ResultadoInvitacionExpirada {
+            self = .expirada
+        } else if kotlin is ResultadoInvitacionYaUsada {
+            self = .yaUsada
+        } else if kotlin is ResultadoInvitacionNeveraLlena {
+            self = .neveraLlena
+        } else if let r = kotlin as? ResultadoInvitacionError {
+            self = .error(r.mensaje)
+        } else {
+            self = .error("Resultado de invitación desconocido")
+        }
+    }
+}

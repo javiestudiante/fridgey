@@ -5,14 +5,18 @@ struct NeveraDetailView: View {
 
     @StateObject private var viewModel: NeveraDetailViewModel
     let neveraId: String
+    let currentUserId: String
     @Environment(\.dismiss) private var dismiss
 
     @State private var showAddSheet = false
     @State private var pendingDelete: Producto?
     @State private var selectedCategory: Categoria?
+    @State private var showCompartir = false
+    @State private var navInvitar = false
 
     init(neveraId: String, currentUserId: String) {
         self.neveraId = neveraId
+        self.currentUserId = currentUserId
         _viewModel = StateObject(
             wrappedValue: NeveraDetailViewModel(neveraId: neveraId, currentUserId: currentUserId)
         )
@@ -63,8 +67,67 @@ struct NeveraDetailView: View {
                                     set: { if !$0 { viewModel.clearError() } }),
                actions: { Button("OK") { viewModel.clearError() } },
                message: { Text(viewModel.state.error ?? "") })
+        // --- Compartir (Sprint B, paridad con el diálogo Android) ---
+        .confirmationDialog("Compartir nevera",
+                            isPresented: $showCompartir,
+                            titleVisibility: .visible) {
+            // Equivalente al `when` exhaustivo de Android: ModoNevera es un
+            // enum de Kotlin (clase en Swift), así que se ramifica con
+            // if/else sobre sus dos valores.
+            if viewModel.state.modo == ModoNevera.local {
+                Button("Hacer colaborativa") { viewModel.hacerColaborativa() }
+                Button("Cancelar", role: .cancel) {}
+            } else {
+                Button("Invitar con código") { navInvitar = true }
+                Button("Dejar de compartir", role: .destructive) {
+                    viewModel.dejarDeCompartir()
+                }
+                Button("Cancelar", role: .cancel) {}
+            }
+        } message: {
+            if viewModel.state.modo == ModoNevera.local {
+                Text("Esta nevera vive solo en este dispositivo. Al hacerla "
+                     + "colaborativa se sincroniza en la nube y podrás invitar "
+                     + "hasta 3 personas más (4 miembros en total).")
+            } else {
+                Text("Esta nevera es colaborativa: se sincroniza en la nube "
+                     + "entre todos sus miembros. Si dejas de compartirla, los "
+                     + "colaboradores perderán el acceso y tú conservarás los datos.")
+            }
+        }
+        .alert("Compartir nevera",
+               isPresented: Binding(get: { viewModel.state.errorCompartir != nil },
+                                    set: { if !$0 { viewModel.limpiarErrorCompartir() } }),
+               actions: { Button("OK") { viewModel.limpiarErrorCompartir() } },
+               message: { Text(viewModel.state.errorCompartir ?? "") })
+        .overlay { transicionOverlay }
+        .navigationDestination(isPresented: $navInvitar) {
+            InvitarView(neveraId: neveraId, currentUserId: currentUserId)
+        }
         .onAppear { viewModel.start() }
         .onDisappear { viewModel.stop() }
+    }
+
+    /// Spinner bloqueante mientras una transición LOCAL↔SHARED espera el ack
+    /// del servidor (espejo de los spinners del diálogo Android).
+    @ViewBuilder
+    private var transicionOverlay: some View {
+        if viewModel.state.compartiendo || viewModel.state.dejandoDeCompartir {
+            ZStack {
+                Color.black.opacity(0.25).ignoresSafeArea()
+                VStack(spacing: 12) {
+                    ProgressView().tint(Color.fridgeyMintDeep)
+                    Text(viewModel.state.compartiendo
+                         ? "Haciendo colaborativa…"
+                         : "Dejando de compartir…")
+                        .font(.custom("Inter-Regular", size: 14).weight(.medium))
+                        .foregroundStyle(Color.fridgeyInk)
+                }
+                .padding(24)
+                .background(Color.fridgeySurfaceWhite,
+                            in: RoundedRectangle(cornerRadius: 18))
+            }
+        }
     }
 
     // MARK: - Content (3 urgency shelves)
@@ -145,10 +208,13 @@ struct NeveraDetailView: View {
                     .foregroundStyle(Color.fridgeyInk)
             }
             Spacer()
-            if emptyVariant {
-                squareButton(systemName: "square.and.arrow.up") { /* compartir — sin feature */ }
-            } else {
+            if !emptyVariant {
                 detailAvatars
+            }
+            // Compartir (UC-03): solo el propietario gestiona la compartición.
+            if viewModel.state.esPropietario {
+                squareButton(systemName: "square.and.arrow.up") { showCompartir = true }
+                    .padding(.leading, 8)
             }
         }
         .padding(.horizontal, 16)

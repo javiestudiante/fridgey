@@ -16,6 +16,10 @@ struct iOSApp: App {
         //      GoogleSignInHelper / AppleSignInHelper.
         FirebaseApp.configure()
         KoinIosKt.doInitKoin()
+        // Mirror of FridgeyApplication (Android): the SyncManager follows
+        // the auth cycle — login starts the Firestore listeners for SHARED
+        // fridges, logout stops them. The lifecycle logic lives in Kotlin.
+        KoinIosKt.bindSyncManagerToAuth()
         GoogleSignInBridge.register()
         AppleSignInBridge.register()
     }

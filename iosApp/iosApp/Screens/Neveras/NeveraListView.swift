@@ -9,6 +9,7 @@ struct NeveraListView: View {
 
     @State private var showCreateSheet = false
     @State private var navTarget: Nevera?
+    @State private var showUnirse = false
 
     init(currentUserId: String, onSignOut: @escaping () -> Void) {
         _viewModel = StateObject(wrappedValue: NeveraListViewModel(currentUserId: currentUserId))
@@ -42,6 +43,9 @@ struct NeveraListView: View {
             .navigationBarHidden(true)
             .navigationDestination(item: $navTarget) { nevera in
                 NeveraDetailView(neveraId: nevera.id, currentUserId: currentUserId)
+            }
+            .navigationDestination(isPresented: $showUnirse) {
+                UnirseView(currentUserId: currentUserId)
             }
             .sheet(isPresented: $showCreateSheet) {
                 CreateNeveraSheet(isPresented: $showCreateSheet) { name in
@@ -116,6 +120,11 @@ struct NeveraListView: View {
                 // Sign-out lives in an honest overflow menu; the bell is
                 // decorative (notifications aren't a feature yet).
                 Menu {
+                    // Paridad con el DropdownMenu de Android: unirse a una
+                    // nevera colaborativa con un código/QR de invitación.
+                    Button(action: { showUnirse = true }) {
+                        Label("Unirse con código", systemImage: "person.badge.plus")
+                    }
                     Button(role: .destructive, action: onSignOut) {
                         Label("Cerrar sesión", systemImage: "rectangle.portrait.and.arrow.right")
                     }

@@ -18,6 +18,13 @@ target 'iosApp' do
   # Firebase Authentication — backs everything in shared/AuthRepository.
   pod 'FirebaseAuth'
 
+  # Cloud Firestore — backs the SHARED-fridge sync in shared (gitlive
+  # firebase-firestore); like FirebaseAuth, its FIR* symbols resolve at
+  # app link time against this pod. Unpinned on purpose: the resolver
+  # keeps it on the same Firebase release train as FirebaseAuth via
+  # their common FirebaseCore constraint.
+  pod 'FirebaseFirestore'
+
   # Native Google Sign-In SDK — used by GoogleSignInBridge.swift to
   # produce an idToken that we hand to Firebase.
   pod 'GoogleSignIn'

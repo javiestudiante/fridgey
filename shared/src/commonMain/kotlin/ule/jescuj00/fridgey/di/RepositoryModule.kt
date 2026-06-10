@@ -36,11 +36,22 @@ val repositoryModule: Module = module {
     single { NeveraRemoteRepository(get()) }
 
     single { UsuarioRepository(get()) }
+    // The remote repository is handed over lazily: resolving it eagerly would
+    // construct Firebase.firestore at repo creation, which LOCAL-only flows
+    // (and their unit tests) never need.
     single {
-        NeveraRepository(get(), get(), get(), get(), get(), get(named(SYNC_SCOPE_QUALIFIER)))
+        NeveraRepository(
+            get(), get(), get(), get(),
+            lazy { get<NeveraRemoteRepository>() },
+            get(named(SYNC_SCOPE_QUALIFIER)),
+        )
     }
     single {
-        ProductoRepository(get(), get(), get(), get(named(SYNC_SCOPE_QUALIFIER)))
+        ProductoRepository(
+            get(), get(),
+            lazy { get<NeveraRemoteRepository>() },
+            get(named(SYNC_SCOPE_QUALIFIER)),
+        )
     }
     single { AuthRepository(auth = Firebase.auth, usuarioRepository = get()) }
 

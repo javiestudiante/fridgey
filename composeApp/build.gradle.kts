@@ -38,6 +38,11 @@ kotlin {
             implementation(libs.androidx.camera.camera2)
             implementation(libs.androidx.camera.lifecycle)
             implementation(libs.androidx.camera.view)
+            // CameraX references Guava's ListenableFuture. Firestore (via
+            // :shared) drags real Guava onto the runtime classpath and forces
+            // `listenablefuture` to the empty 9999.0 stub, so the class must
+            // be supplied by Guava itself at compile time too.
+            implementation(libs.guava.android)
             // ML Kit — the scanner converts CameraX frames to `InputImage`
             // before handing them to the shared `TextRecognizer` wrapper.
             // Already declared as `implementation` in shared/androidMain;

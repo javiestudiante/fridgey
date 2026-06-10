@@ -38,7 +38,11 @@ class NeveraRepository(
     private val colaboradorQueries: NeveraColaboradorQueries,
     private val productoQueries: ProductoQueries,
     private val usuarioQueries: UsuarioQueries,
-    private val remoteRepository: NeveraRemoteRepository,
+    // Lazy on purpose: constructing the repository must never force Firestore
+    // (Firebase) initialization — LOCAL-only code paths, and their unit
+    // tests, run without it. The instance is materialized on the first
+    // SHARED push.
+    private val remoteRepository: Lazy<NeveraRemoteRepository>,
     private val syncScope: CoroutineScope,
 ) {
 
@@ -224,7 +228,7 @@ class NeveraRepository(
                 ?: return@withContext
             when (ModoNevera.fromString(row.modo)) {
                 ModoNevera.SHARED -> syncScope.launch {
-                    runCatching { remoteRepository.updateNombre(neveraId, nuevoNombre) }
+                    runCatching { remoteRepository.value.updateNombre(neveraId, nuevoNombre) }
                 }
                 ModoNevera.LOCAL -> Unit
             }
@@ -247,7 +251,7 @@ class NeveraRepository(
         }
         when (ModoNevera.fromString(row.modo)) {
             ModoNevera.SHARED -> syncScope.launch {
-                runCatching { remoteRepository.deleteNevera(neveraId) }
+                runCatching { remoteRepository.value.deleteNevera(neveraId) }
             }
             ModoNevera.LOCAL -> Unit
         }

@@ -26,7 +26,9 @@ import ule.jescuj00.fridgey.domain.model.UnidadMedida
 class ProductoRepository(
     private val queries: ProductoQueries,
     private val neveraQueries: NeveraQueries,
-    private val remoteRepository: NeveraRemoteRepository,
+    // Lazy for the same reason as in NeveraRepository: building the repo must
+    // not force Firestore initialization; only the first SHARED push does.
+    private val remoteRepository: Lazy<NeveraRemoteRepository>,
     private val syncScope: CoroutineScope,
 ) {
 
@@ -70,7 +72,7 @@ class ProductoRepository(
             unidad = producto.unidad.valor,
         )
         pushSiShared(producto.idNevera) {
-            remoteRepository.setProducto(producto.idNevera, producto.id, producto.toProductoDoc())
+            remoteRepository.value.setProducto(producto.idNevera, producto.id, producto.toProductoDoc())
         }
     }
 
@@ -86,7 +88,7 @@ class ProductoRepository(
             id = producto.id,
         )
         pushSiShared(producto.idNevera) {
-            remoteRepository.setProducto(producto.idNevera, producto.id, producto.toProductoDoc())
+            remoteRepository.value.setProducto(producto.idNevera, producto.id, producto.toProductoDoc())
         }
     }
 
@@ -97,7 +99,7 @@ class ProductoRepository(
             ?: return@withContext
         queries.deleteById(productoId)
         pushSiShared(row.id_nevera) {
-            remoteRepository.deleteProducto(row.id_nevera, productoId)
+            remoteRepository.value.deleteProducto(row.id_nevera, productoId)
         }
     }
 

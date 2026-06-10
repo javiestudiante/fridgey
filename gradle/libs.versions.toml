@@ -53,6 +53,12 @@ sqldelight-runtime = { module = "app.cash.sqldelight:runtime", version.ref = "sq
 sqldelight-coroutines = { module = "app.cash.sqldelight:coroutines-extensions", version.ref = "sqldelight" }
 sqldelight-android-driver = { module = "app.cash.sqldelight:android-driver", version.ref = "sqldelight" }
 sqldelight-native-driver = { module = "app.cash.sqldelight:native-driver", version.ref = "sqldelight" }
+sqldelight-sqlite-driver = { module = "app.cash.sqldelight:sqlite-driver", version.ref = "sqldelight" }   # JVM driver, unit tests only
+# Real Guava, pinned to the version gRPC (via gitlive Firestore) already puts on the
+# runtime classpath. Needed at COMPILE time by CameraX: Firestore's transitive Guava
+# forces `listenablefuture` to the empty 9999.0 stub, so ListenableFuture must come
+# from Guava itself or CameraPreview stops compiling.
+guava-android = { module = "com.google.guava:guava", version = "32.1.3-android" }
 kotlinx-datetime = { module = "org.jetbrains.kotlinx:kotlinx-datetime", version.ref = "kotlinx-datetime" }
 kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "kotlinx-coroutines" }
 

@@ -10,7 +10,11 @@ plugins {
 kotlin {
     androidTarget {
         compilerOptions {
-            jvmTarget.set(JvmTarget.JVM_11)
+            // JVM 17: the gitlive Firestore SDK ships inline functions built
+            // with JVM target 17, which cannot be inlined into 11-target
+            // bytecode. Only :shared needs this (composeApp never calls
+            // gitlive inline functions directly).
+            jvmTarget.set(JvmTarget.JVM_17)
         }
     }
 
@@ -72,6 +76,11 @@ kotlin {
             // commonTest without pulling in a platform test runner.
             implementation(libs.kotlinx.coroutines.test)
         }
+        androidUnitTest.dependencies {
+            // In-memory JVM SQLite driver so unit tests can exercise the REAL
+            // SQLDelight schema (FK / cascade behaviour) without a device.
+            implementation(libs.sqldelight.sqlite.driver)
+        }
     }
 }
 
@@ -79,8 +88,9 @@ android {
     namespace = "ule.jescuj00.fridgey.shared"
     compileSdk = libs.versions.android.compileSdk.get().toInt()
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_11
-        targetCompatibility = JavaVersion.VERSION_11
+        // Must match the Kotlin jvmTarget above (JVM 17, required by gitlive).
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
     }
     defaultConfig {
         minSdk = libs.versions.android.minSdk.get().toInt()

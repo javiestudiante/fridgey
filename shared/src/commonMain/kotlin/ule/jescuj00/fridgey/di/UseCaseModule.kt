@@ -1,6 +1,7 @@
 package ule.jescuj00.fridgey.di
 
 import org.koin.core.module.Module
+import org.koin.core.qualifier.named
 import org.koin.dsl.module
 import ule.jescuj00.fridgey.domain.scanner.BarcodeScanner
 import ule.jescuj00.fridgey.domain.scanner.TextRecognizer
@@ -11,6 +12,8 @@ import ule.jescuj00.fridgey.domain.usecase.MapOffCategoryUseCase
 import ule.jescuj00.fridgey.domain.usecase.ParseQuantityUseCase
 import ule.jescuj00.fridgey.domain.usecase.RemoveColaboradorUseCase
 import ule.jescuj00.fridgey.domain.usecase.ScanExpirationDateUseCase
+import ule.jescuj00.fridgey.domain.usecase.ShareNeveraUseCase
+import ule.jescuj00.fridgey.domain.usecase.UnshareNeveraUseCase
 import ule.jescuj00.fridgey.domain.usecase.auth.ObserveAuthStateUseCase
 import ule.jescuj00.fridgey.domain.usecase.auth.SignInWithAppleUseCase
 import ule.jescuj00.fridgey.domain.usecase.auth.SignInWithGoogleUseCase
@@ -36,6 +39,9 @@ val useCaseModule: Module = module {
     factory { ParseQuantityUseCase() }
     factory { MapOffCategoryUseCase() }
     factory { LookupProductByBarcodeUseCase(get()) }
+
+    factory { ShareNeveraUseCase(get(), get(), get(), get(), get(named(SYNC_SCOPE_QUALIFIER))) }
+    factory { UnshareNeveraUseCase(get(), get(), get()) }
 
     factory { SignInWithGoogleUseCase(get(), get()) }
     factory { SignInWithAppleUseCase(get(), get()) }

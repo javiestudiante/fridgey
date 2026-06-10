@@ -6,8 +6,18 @@
 // Model in plain language:
 //   - usuarios/{uid}     -> only that user can read or write their document.
 //   - neveras/{id}       -> the owner has full control; collaborators can read.
+//                           Carries `miembros`, an array of denormalized
+//                           profiles ({uid, nombre, fotoUrl}) that INCLUDES the
+//                           owner, plus an `updatedAt` serverTimestamp.
+//                           A non-owner may update the doc only to add
+//                           THEMSELVES (invite acceptance, see esAutoUnionValida).
 //   - neveras/.../productos/{id}
 //                        -> owner and collaborators can read AND write.
+//   - invitaciones/{codigo}
+//                        -> invite codes for joining a fridge. Created by the
+//                           fridge owner, readable by any signed-in user that
+//                           knows the code, expire after 24h, single-use
+//                           (`usada` flips false -> true exactly once).
 //
 // TODOs (revisit once auth is fully integrated and the data model stabilizes):
 //   - Validate the SHAPE of incoming documents (request.resource.data.keys(),
@@ -18,8 +28,6 @@
 //     `idPropietario`).
 //   - Add rate-limit-friendly checks (e.g. cap on number of products per
 //     fridge) once we know real usage patterns.
-//   - Consider a separate rule path for invitations / pending collaborators
-//     instead of writing directly to `colaboradores`.
 // =============================================================================
 
 rules_version = '2';
@@ -41,8 +49,40 @@ service cloud.firestore {
       allow create: if request.auth != null &&
         request.resource.data.idPropietario == request.auth.uid;
 
-      allow update: if request.auth != null &&
-        resource.data.idPropietario == request.auth.uid;
+      // Self-join via invitation: accepting an invite requires the invitee to
+      // add themselves to the fridge doc (`colaboradores` + their denormalized
+      // `miembros` entry), which the owner-only update rule would block. This
+      // function allows exactly that mutation and nothing else.
+      //
+      // Why <= 3: the fridge limit is 4 users INCLUDING the owner, but the
+      // owner lives in `idPropietario` and is NOT part of `colaboradores`,
+      // so the array tops out at 3.
+      //
+      // Known limitation (accepted risk): we do not validate the CONTENT of
+      // the entry added to `miembros` — a malicious invitee could write
+      // someone else's name/photo. To be revisited together with the general
+      // shape-validation TODO in the header.
+      function esAutoUnionValida() {
+        return request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['colaboradores', 'miembros', 'updatedAt']) &&
+          // Not already a collaborator, and present after the update
+          !(request.auth.uid in resource.data.colaboradores) &&
+          request.auth.uid in request.resource.data.colaboradores &&
+          // Nobody is removed, and exactly one uid is added
+          request.resource.data.colaboradores.hasAll(resource.data.colaboradores) &&
+          request.resource.data.colaboradores.size() == resource.data.colaboradores.size() + 1 &&
+          // Limit: 4 users including the owner
+          request.resource.data.colaboradores.size() <= 3 &&
+          // Their denormalized profile entry is added (content NOT validated)
+          request.resource.data.miembros.size() == resource.data.miembros.size() + 1;
+      }
+
+      allow update: if request.auth != null && (
+        // (a) the owner keeps full update rights, as before
+        resource.data.idPropietario == request.auth.uid ||
+        // (b) a non-owner may only add themselves (invite acceptance)
+        esAutoUnionValida()
+      );
 
       allow delete: if request.auth != null &&
         resource.data.idPropietario == request.auth.uid;
@@ -54,6 +94,46 @@ service cloud.firestore {
           request.auth.uid in get(/databases/$(database)/documents/neveras/$(neveraId)).data.colaboradores
         );
       }
+    }
+
+    // Invitations: the fridge owner generates a code (+QR) valid for 24h; the
+    // invitee reads it, validates it (not expired, not used) and marks it as
+    // used while self-joining the fridge (see esAutoUnionValida above).
+    // Fields: { neveraId: string, creadaPor: uid, expiraEn: int (epoch
+    // MILLIS), usada: bool }.
+    match /invitaciones/{codigo} {
+      // The code itself IS the secret (capability URL): anyone signed in who
+      // holds it may read the invitation to validate it. Note: in rules v2
+      // `read` covers both get and list; codes are long random strings, so
+      // listing the collection yields nothing useful without knowing a code,
+      // but a future hardening could split `get` from `list`.
+      allow read: if request.auth != null;
+
+      // Only the owner of the referenced fridge can create invitations (the
+      // get() checks idPropietario). `expiraEn` is set by the client, but the
+      // rules cap it at <= now + 25h (24h nominal + clock skew margin) so no
+      // eternal codes can be minted. New invitations start unused.
+      allow create: if request.auth != null &&
+        request.resource.data.creadaPor == request.auth.uid &&
+        request.resource.data.usada == false &&
+        request.resource.data.neveraId is string &&
+        request.resource.data.expiraEn is int &&
+        request.resource.data.expiraEn <= request.time.toMillis() + 25 * 60 * 60 * 1000 &&
+        get(/databases/$(database)/documents/neveras/$(request.resource.data.neveraId)).data.idPropietario == request.auth.uid;
+
+      // The ONLY allowed mutation is marking the invitation as used (usada
+      // false -> true, no other field changes), and only while it has not
+      // expired. Expiration is checked against request.time — the SERVER
+      // clock — never the client's.
+      allow update: if request.auth != null &&
+        resource.data.usada == false &&
+        request.resource.data.usada == true &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['usada']) &&
+        resource.data.expiraEn > request.time.toMillis();
+
+      // The issuer (fridge owner) can revoke a code they emitted
+      allow delete: if request.auth != null &&
+        resource.data.creadaPor == request.auth.uid;
     }
   }
 }

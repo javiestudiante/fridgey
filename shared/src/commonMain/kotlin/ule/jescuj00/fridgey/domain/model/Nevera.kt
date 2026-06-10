@@ -5,5 +5,6 @@ data class Nevera(
     val nombre: String,
     val idPropietario: String,
     val esPropietario: Boolean,
-    val numeroProductos: Int
+    val numeroProductos: Int,
+    val modo: ModoNevera = ModoNevera.LOCAL
 )

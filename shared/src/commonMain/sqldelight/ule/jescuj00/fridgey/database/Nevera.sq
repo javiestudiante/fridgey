@@ -3,6 +3,8 @@ CREATE TABLE IF NOT EXISTS Nevera (
     nombre TEXT NOT NULL,
     id_propietario TEXT NOT NULL,
     fecha_creacion INTEGER NOT NULL,  -- Unix timestamp (seconds)
+    modo TEXT NOT NULL DEFAULT 'LOCAL',  -- ModoNevera.valor: 'LOCAL' | 'SHARED'
+    updated_at INTEGER,  -- último serverTimestamp de Firestore aplicado (epoch seconds); NULL si nunca sincronizada
     FOREIGN KEY (id_propietario) REFERENCES Usuario(id) ON DELETE CASCADE
 );
 
@@ -30,3 +32,18 @@ UPDATE Nevera SET nombre = ? WHERE id = ?;
 
 deleteById:
 DELETE FROM Nevera WHERE id = ?;
+
+-- Feeds the SyncManager: which fridges need a Firestore listener
+selectSharedIds:
+SELECT id FROM Nevera WHERE modo = 'SHARED';
+
+updateModo:
+UPDATE Nevera SET modo = ? WHERE id = ?;
+
+-- Resets the sync watermark (e.g. when a fridge goes back to LOCAL)
+clearSyncState:
+UPDATE Nevera SET updated_at = NULL WHERE id = ?;
+
+-- Used by the sync to apply remote changes with last-write-wins
+updateFromRemote:
+UPDATE Nevera SET nombre = ?, id_propietario = ?, updated_at = ? WHERE id = ?;

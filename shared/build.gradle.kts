@@ -43,6 +43,8 @@ kotlin {
             // native Firebase SDK on each platform (Android JVM / iOS Obj-C).
             api(libs.gitlive.firebase.auth)
             api(libs.gitlive.firebase.common)
+            // Firestore vía GitLive para neveras SHARED.
+            api(libs.gitlive.firebase.firestore)
         }
         androidMain.dependencies {
             implementation(libs.sqldelight.android.driver)

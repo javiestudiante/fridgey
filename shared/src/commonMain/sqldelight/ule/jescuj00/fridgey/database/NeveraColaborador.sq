@@ -29,3 +29,8 @@ SELECT u.*
 FROM NeveraColaborador nc
 INNER JOIN Usuario u ON nc.id_usuario = u.id
 WHERE nc.id_nevera = ?;
+
+-- Idempotent upsert for the local mirror of the Firestore `colaboradores` array
+insertOrIgnore:
+INSERT OR IGNORE INTO NeveraColaborador (id_nevera, id_usuario, fecha_union)
+VALUES (?, ?, ?);

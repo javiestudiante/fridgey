@@ -1,0 +1,14 @@
+-- Migration: schema version 2 -> 3
+--
+-- Adds the columns needed to sync collaborative (SHARED) fridges with
+-- Firestore: a `modo` flag on Nevera plus an `updated_at` watermark on
+-- both Nevera and Producto.
+--
+-- Unlike 1.sqm, no table rebuild is needed: all three are simple
+-- ALTER TABLE ADD COLUMNs with a DEFAULT or nullable, which SQLite
+-- backfills on existing rows. ADD COLUMN appends at the end of the
+-- table, so the resulting column order matches the .sq definitions
+-- because the new columns are declared last in each table there.
+ALTER TABLE Nevera ADD COLUMN modo TEXT NOT NULL DEFAULT 'LOCAL';
+ALTER TABLE Nevera ADD COLUMN updated_at INTEGER;
+ALTER TABLE Producto ADD COLUMN updated_at INTEGER;

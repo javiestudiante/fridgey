@@ -19,3 +19,13 @@ VALUES (?, ?, ?, ?, ?, ?);
 
 deleteById:
 DELETE FROM Usuario WHERE id = ?;
+
+-- Used by the sync to mirror denormalized profiles of remote collaborators
+-- without clobbering the local user's own row (the `insert` above is
+-- INSERT OR REPLACE and would overwrite the real email/proveedor).
+insertOrIgnore:
+INSERT OR IGNORE INTO Usuario (id, email, nombre, proveedor, foto_url, fecha_creacion)
+VALUES (?, ?, ?, ?, ?, ?);
+
+updateProfile:
+UPDATE Usuario SET nombre = ?, foto_url = ? WHERE id = ?;

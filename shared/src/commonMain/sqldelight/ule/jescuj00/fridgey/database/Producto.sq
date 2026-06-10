@@ -10,6 +10,7 @@ CREATE TABLE IF NOT EXISTS Producto (
     cantidad REAL NOT NULL DEFAULT 1.0,                       -- amount of product (Double; supports 0.5 kg, 1.5 l, etc.)
     dias_aviso_antes INTEGER NOT NULL DEFAULT 3,              -- how many days before expiry the user wants to be warned
     unidad TEXT NOT NULL DEFAULT 'unidades',                  -- pairs with `cantidad`; canonical `valor` of the UnidadMedida enum
+    updated_at INTEGER,  -- último serverTimestamp de Firestore aplicado (epoch seconds); NULL si nunca sincronizado
     FOREIGN KEY (id_nevera) REFERENCES Nevera(id) ON DELETE CASCADE
 );
 
@@ -86,3 +87,16 @@ WHERE p.fecha_caducidad = :hoy
       SELECT id_nevera FROM NeveraColaborador WHERE id_usuario = :usuarioId
   )
 ORDER BY p.nombre ASC;
+
+-- insert-or-ignore + update pair the sync uses as an upsert (the SQLite
+-- shipped with our minSdk doesn't support ON CONFLICT DO UPDATE). NOT an
+-- INSERT OR REPLACE deliberately: REPLACE deletes + reinserts the row,
+-- which would fire ON DELETE CASCADE triggers and reset unset columns.
+insertFromRemote:
+INSERT OR IGNORE INTO Producto (id, id_nevera, codigo_barras, nombre, categoria, fecha_caducidad, fecha_registro, imagen_url, cantidad, dias_aviso_antes, unidad, updated_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+updateFromRemote:
+UPDATE Producto
+SET codigo_barras = ?, nombre = ?, categoria = ?, fecha_caducidad = ?, fecha_registro = ?, imagen_url = ?, cantidad = ?, dias_aviso_antes = ?, unidad = ?, updated_at = ?
+WHERE id = ?;

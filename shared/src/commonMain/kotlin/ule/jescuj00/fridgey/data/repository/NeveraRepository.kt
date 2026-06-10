@@ -3,11 +3,14 @@ package ule.jescuj00.fridgey.data.repository
 import app.cash.sqldelight.coroutines.asFlow
 import app.cash.sqldelight.coroutines.mapToList
 import app.cash.sqldelight.coroutines.mapToOne
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.datetime.Clock
 import kotlinx.datetime.DateTimeUnit
@@ -15,11 +18,14 @@ import kotlinx.datetime.TimeZone
 import kotlinx.datetime.atStartOfDayIn
 import kotlinx.datetime.plus
 import kotlinx.datetime.todayIn
+import ule.jescuj00.fridgey.data.remote.firestore.NeveraDoc
+import ule.jescuj00.fridgey.data.remote.firestore.NeveraRemoteRepository
 import ule.jescuj00.fridgey.database.NeveraColaboradorQueries
 import ule.jescuj00.fridgey.database.NeveraQueries
 import ule.jescuj00.fridgey.database.ProductoQueries
 import ule.jescuj00.fridgey.database.UsuarioQueries
 import ule.jescuj00.fridgey.domain.model.ExpiringTodaySummary
+import ule.jescuj00.fridgey.domain.model.ModoNevera
 import ule.jescuj00.fridgey.domain.model.Nevera
 import ule.jescuj00.fridgey.domain.model.NeveraResumen
 import ule.jescuj00.fridgey.domain.model.Proveedor
@@ -31,7 +37,9 @@ class NeveraRepository(
     private val neveraQueries: NeveraQueries,
     private val colaboradorQueries: NeveraColaboradorQueries,
     private val productoQueries: ProductoQueries,
-    private val usuarioQueries: UsuarioQueries
+    private val usuarioQueries: UsuarioQueries,
+    private val remoteRepository: NeveraRemoteRepository,
+    private val syncScope: CoroutineScope,
 ) {
 
     private companion object {
@@ -203,13 +211,46 @@ class NeveraRepository(
             id
         }
 
+    /**
+     * Renames a fridge locally and — only when the fridge is SHARED — enqueues
+     * the rename to Firestore (fire-and-forget: Firestore's offline queue plus
+     * the snapshot listeners + last-write-wins guarantee convergence, so a
+     * failed push must never break the local operation).
+     */
     suspend fun updateNevera(neveraId: String, nuevoNombre: String): Unit =
         withContext(Dispatchers.Default) {
             neveraQueries.updateNombre(nombre = nuevoNombre, id = neveraId)
+            val row = neveraQueries.selectById(neveraId).executeAsOneOrNull()
+                ?: return@withContext
+            when (ModoNevera.fromString(row.modo)) {
+                ModoNevera.SHARED -> syncScope.launch {
+                    runCatching { remoteRepository.updateNombre(neveraId, nuevoNombre) }
+                }
+                ModoNevera.LOCAL -> Unit
+            }
         }
 
+    /**
+     * Deletes a fridge and all its dependent rows. If it was SHARED, the
+     * deletion is also enqueued to Firestore (fire-and-forget).
+     */
     suspend fun deleteNevera(neveraId: String): Unit = withContext(Dispatchers.Default) {
-        neveraQueries.deleteById(neveraId)
+        val row = neveraQueries.selectById(neveraId).executeAsOneOrNull()
+            ?: return@withContext
+        // The Android driver does not enable PRAGMA foreign_keys, so the
+        // schema's ON DELETE CASCADE clauses never fire at runtime; deleting
+        // children explicitly avoids orphaned rows (pre-existing latent bug).
+        neveraQueries.transaction {
+            productoQueries.deleteByNevera(neveraId)
+            colaboradorQueries.deleteAllByNevera(neveraId)
+            neveraQueries.deleteById(neveraId)
+        }
+        when (ModoNevera.fromString(row.modo)) {
+            ModoNevera.SHARED -> syncScope.launch {
+                runCatching { remoteRepository.deleteNevera(neveraId) }
+            }
+            ModoNevera.LOCAL -> Unit
+        }
     }
 
     /**
@@ -271,6 +312,145 @@ class NeveraRepository(
                 .count { it.id_propietario == usuarioId }
         }
 
+    // --- LOCAL/SHARED sync ---
+
+    /**
+     * Switches a fridge between [ModoNevera.LOCAL] and [ModoNevera.SHARED].
+     */
+    suspend fun updateModo(neveraId: String, modo: ModoNevera): Unit =
+        withContext(Dispatchers.Default) {
+            neveraQueries.updateModo(modo = modo.valor, id = neveraId)
+        }
+
+    /**
+     * Emits the set of fridge IDs currently in SHARED mode. Feeds the
+     * SyncManager so it can start/stop Firestore listeners as fridges enter
+     * or leave the shared mode. [distinctUntilChanged] avoids re-emitting on
+     * unrelated Nevera table writes.
+     */
+    fun observeSharedNeveraIds(): Flow<Set<String>> =
+        neveraQueries.selectSharedIds()
+            .asFlow()
+            .mapToList(Dispatchers.Default)
+            .map { it.toSet() }
+            .distinctUntilChanged()
+
+    /**
+     * One-shot, sync-oriented view of a fridge row (or null if it does not
+     * exist). Unlike [getNeveraById] it carries no derived UI fields, just
+     * what the sync layer needs.
+     */
+    suspend fun getSyncSnapshot(neveraId: String): NeveraSyncSnapshot? =
+        withContext(Dispatchers.Default) {
+            neveraQueries.selectById(neveraId).executeAsOneOrNull()?.let { row ->
+                NeveraSyncSnapshot(
+                    id = row.id,
+                    nombre = row.nombre,
+                    idPropietario = row.id_propietario,
+                    fechaCreacion = row.fecha_creacion,
+                    modo = ModoNevera.fromString(row.modo),
+                    updatedAt = row.updated_at,
+                )
+            }
+        }
+
+    /**
+     * Applies a remote fridge snapshot with last-write-wins: the change is
+     * applied if it has no server timestamp yet, if the local row has never
+     * been synced, or if the remote timestamp is not older than the last one
+     * applied locally ([updatedAtSeconds] >= local `updated_at`); otherwise
+     * it is discarded as stale. The local `updated_at` stores the last
+     * APPLIED server timestamp — local writes never touch it.
+     */
+    suspend fun aplicarNeveraRemota(
+        neveraId: String,
+        doc: NeveraDoc,
+        updatedAtSeconds: Long?
+    ): Unit = withContext(Dispatchers.Default) {
+        // No local row → the fridge was deleted locally; do not resurrect
+        // orphaned rows from a late-arriving snapshot.
+        val local = neveraQueries.selectById(neveraId).executeAsOneOrNull()
+            ?: return@withContext
+        val localUpdatedAt = local.updated_at
+        val aplicar = updatedAtSeconds == null ||
+            localUpdatedAt == null ||
+            updatedAtSeconds >= localUpdatedAt
+        if (!aplicar) return@withContext
+        val ahora = Clock.System.now().epochSeconds
+        neveraQueries.transaction {
+            neveraQueries.updateFromRemote(
+                nombre = doc.nombre,
+                id_propietario = doc.idPropietario,
+                updated_at = updatedAtSeconds ?: local.updated_at,
+                id = neveraId,
+            )
+            // Users must exist BEFORE collaborator rows (FK). proveedor =
+            // "google" is a placeholder: the column is NOT NULL and the real
+            // provider is only knowable for the current user (and only used
+            // on their own profile); insertOrIgnore + updateProfile keeps the
+            // real email/proveedor of pre-existing rows intact.
+            doc.miembros.forEach { miembro ->
+                usuarioQueries.insertOrIgnore(
+                    id = miembro.uid,
+                    email = "",
+                    nombre = miembro.nombre,
+                    proveedor = "google",
+                    foto_url = miembro.fotoUrl,
+                    fecha_creacion = ahora,
+                )
+                usuarioQueries.updateProfile(
+                    nombre = miembro.nombre,
+                    foto_url = miembro.fotoUrl,
+                    id = miembro.uid,
+                )
+            }
+            // Mirror the remote collaborator set WITHOUT resetting the
+            // fecha_union of rows that survive.
+            val existentes = colaboradorQueries.selectByNevera(neveraId)
+                .executeAsList().map { it.id_usuario }.toSet()
+            val remotos = doc.colaboradores.toSet()
+            (existentes - remotos).forEach { usuarioId ->
+                colaboradorQueries.delete(id_nevera = neveraId, id_usuario = usuarioId)
+            }
+            (remotos - existentes).forEach { usuarioId ->
+                colaboradorQueries.insertOrIgnore(
+                    id_nevera = neveraId,
+                    id_usuario = usuarioId,
+                    fecha_union = ahora,
+                )
+            }
+        }
+    }
+
+    /**
+     * The fridge stops being shared but the owner KEEPS the data: back to
+     * LOCAL mode, sync state cleared and collaborators removed. Products are
+     * kept — their stale `updated_at` values are harmless once the fridge no
+     * longer syncs.
+     */
+    suspend fun revertirANoCompartida(neveraId: String): Unit =
+        withContext(Dispatchers.Default) {
+            neveraQueries.transaction {
+                neveraQueries.updateModo(modo = ModoNevera.LOCAL.valor, id = neveraId)
+                neveraQueries.clearSyncState(neveraId)
+                colaboradorQueries.deleteAllByNevera(neveraId)
+            }
+        }
+
+    /**
+     * A collaborator lost access (the fridge was deleted remotely or their
+     * permission was revoked) → the whole local copy is removed. Local-only:
+     * no remote push.
+     */
+    suspend fun eliminarNeveraLocal(neveraId: String): Unit =
+        withContext(Dispatchers.Default) {
+            neveraQueries.transaction {
+                productoQueries.deleteByNevera(neveraId)
+                colaboradorQueries.deleteAllByNevera(neveraId)
+                neveraQueries.deleteById(neveraId)
+            }
+        }
+
     // --- Row mapper ---
 
     private fun ule.jescuj00.fridgey.database.Nevera.toDomain(
@@ -281,6 +461,20 @@ class NeveraRepository(
         nombre = nombre,
         idPropietario = id_propietario,
         esPropietario = esPropietario,
-        numeroProductos = numeroProductos
+        numeroProductos = numeroProductos,
+        modo = ModoNevera.fromString(modo)
     )
 }
+
+/**
+ * Sync-layer view of a fridge row: the raw persisted fields plus the
+ * LOCAL/SHARED mode and the last APPLIED remote server timestamp.
+ */
+data class NeveraSyncSnapshot(
+    val id: String,
+    val nombre: String,
+    val idPropietario: String,
+    val fechaCreacion: Long,
+    val modo: ModoNevera,
+    val updatedAt: Long?,
+)

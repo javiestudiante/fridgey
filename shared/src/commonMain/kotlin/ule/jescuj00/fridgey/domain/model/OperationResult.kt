@@ -13,5 +13,6 @@ enum class ErrorCode {
     UNAUTHORIZED,
     NOT_FOUND,
     INVALID_INPUT,
-    DATABASE_ERROR
+    DATABASE_ERROR,
+    NETWORK_ERROR
 }

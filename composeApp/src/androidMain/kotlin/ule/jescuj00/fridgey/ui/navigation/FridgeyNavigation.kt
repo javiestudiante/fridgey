@@ -28,9 +28,11 @@ import ule.jescuj00.fridgey.ui.scanner.DateScannerScreen
 import ule.jescuj00.fridgey.ui.screens.add_producto.AddProductoScreen
 import ule.jescuj00.fridgey.ui.screens.add_producto.AddProductoViewModel
 import ule.jescuj00.fridgey.ui.screens.create_nevera.CreateNeveraScreen
+import ule.jescuj00.fridgey.ui.screens.invitar.InvitarScreen
 import ule.jescuj00.fridgey.ui.screens.login.LoginScreen
 import ule.jescuj00.fridgey.ui.screens.nevera_detail.NeveraDetailScreen
 import ule.jescuj00.fridgey.ui.screens.nevera_list.NeveraListScreen
+import ule.jescuj00.fridgey.ui.screens.unirse.UnirseScreen
 
 @Composable
 fun FridgeyNavigation() {
@@ -99,6 +101,7 @@ private fun AuthenticatedGraph(
                 onNavigateToNevera = { neveraId ->
                     navController.navigate(Screen.NeveraDetail.createRoute(neveraId))
                 },
+                onNavigateToUnirse = { navController.navigate(Screen.Unirse.route) },
                 onSignOut = onSignOut
             )
         }
@@ -125,7 +128,40 @@ private fun AuthenticatedGraph(
                 onNavigateBack = { navController.popBackStack() },
                 onNavigateToAddProducto = {
                     navController.navigate(Screen.AddProducto.createRoute(neveraId))
+                },
+                onNavigateToInvitar = {
+                    navController.navigate(Screen.Invitar.createRoute(neveraId))
                 }
+            )
+        }
+
+        composable(
+            route = Screen.Invitar.route,
+            arguments = listOf(
+                navArgument(Screen.Invitar.ARG_NEVERA_ID) { type = NavType.StringType }
+            )
+        ) { backStackEntry ->
+            val neveraId = requireNotNull(
+                backStackEntry.arguments?.getString(Screen.Invitar.ARG_NEVERA_ID)
+            )
+            InvitarScreen(
+                neveraId = neveraId,
+                currentUserId = currentUserId,
+                onNavigateBack = { navController.popBackStack() },
+            )
+        }
+
+        composable(Screen.Unirse.route) {
+            UnirseScreen(
+                currentUserId = currentUserId,
+                onNavigateBack = { navController.popBackStack() },
+                onNavigateToNevera = { neveraId ->
+                    // Reemplaza el flujo de unión en el back stack: volver desde
+                    // el detalle debe aterrizar en "Mis neveras", no en el form.
+                    navController.navigate(Screen.NeveraDetail.createRoute(neveraId)) {
+                        popUpTo(Screen.NeveraList.route)
+                    }
+                },
             )
         }
 

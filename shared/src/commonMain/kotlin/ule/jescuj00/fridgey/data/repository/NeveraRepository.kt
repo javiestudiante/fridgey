@@ -427,6 +427,27 @@ class NeveraRepository(
     }
 
     /**
+     * Hooks a fridge the user just joined (or re-joined) into the local
+     * mirror: creates the row directly in SHARED mode — which makes the
+     * SyncManager attach its listener — and folds the given remote snapshot
+     * in. Idempotent: re-joining an already-mirrored fridge only refreshes
+     * its data. Products arrive via the listener, not here.
+     */
+    suspend fun engancharNeveraRemota(
+        neveraId: String,
+        doc: NeveraDoc,
+        updatedAtSeconds: Long?
+    ): Unit = withContext(Dispatchers.Default) {
+        neveraQueries.insertOrIgnoreFromRemote(
+            id = neveraId,
+            nombre = doc.nombre,
+            id_propietario = doc.idPropietario,
+            fecha_creacion = doc.fechaCreacion,
+        )
+        aplicarNeveraRemota(neveraId, doc, updatedAtSeconds)
+    }
+
+    /**
      * The fridge stops being shared but the owner KEEPS the data: back to
      * LOCAL mode, sync state cleared and collaborators removed. Products are
      * kept — their stale `updated_at` values are harmless once the fridge no

@@ -35,6 +35,7 @@ import ule.jescuj00.fridgey.domain.model.Producto
 
 const val COLECCION_NEVERAS = "neveras"
 const val COLECCION_PRODUCTOS = "productos"
+const val COLECCION_INVITACIONES = "invitaciones"
 
 /** Denormalized member profile embedded in [NeveraDoc.miembros]. */
 @Serializable
@@ -69,6 +70,25 @@ data class ProductoDoc(
     val diasAvisoAntes: Int = 3,
     val unidad: String = "unidades",
     val updatedAt: BaseTimestamp? = null,
+)
+
+/**
+ * Document at `invitaciones/{codigo}`. The code itself is the document id
+ * (capability token: whoever holds it may read the invitation).
+ *
+ * `expiraEn` is epoch MILLIS — the deployed rules validate it against
+ * `request.time.toMillis()` (server clock). `nombreNevera` is denormalized
+ * on purpose: the invitee cannot read `neveras/{id}` before joining (the
+ * rules only allow members), yet the join UI wants to show which fridge
+ * they are joining.
+ */
+@Serializable
+data class InvitacionDoc(
+    val neveraId: String = "",
+    val creadaPor: String = "",
+    val expiraEn: Long = 0,
+    val usada: Boolean = false,
+    val nombreNevera: String = "",
 )
 
 /**

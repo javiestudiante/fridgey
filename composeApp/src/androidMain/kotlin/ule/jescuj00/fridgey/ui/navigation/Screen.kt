@@ -16,6 +16,15 @@ sealed class Screen(val route: String) {
     }
 
     data object DateScanner : Screen("date_scanner")
+
+    /** Pantalla de invitación (código + QR) de una nevera colaborativa. */
+    data object Invitar : Screen("invitar/{neveraId}") {
+        const val ARG_NEVERA_ID = "neveraId"
+        fun createRoute(neveraId: String) = "invitar/$neveraId"
+    }
+
+    /** Flujo "Unirse con código" (entrada manual + escaneo QR). */
+    data object Unirse : Screen("unirse")
 }
 
 /**

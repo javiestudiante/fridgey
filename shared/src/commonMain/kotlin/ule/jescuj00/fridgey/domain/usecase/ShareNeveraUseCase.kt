@@ -1,7 +1,10 @@
 package ule.jescuj00.fridgey.domain.usecase
 
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeout
 import ule.jescuj00.fridgey.data.remote.firestore.MiembroDoc
 import ule.jescuj00.fridgey.data.remote.firestore.NeveraDoc
 import ule.jescuj00.fridgey.data.remote.firestore.NeveraRemoteRepository
@@ -17,17 +20,20 @@ import ule.jescuj00.fridgey.domain.model.OperationResult
  * Transición LOCAL → SHARED: hace colaborativa una nevera subiéndola a
  * Firestore junto con sus productos.
  *
- * Decisión offline-first: el upload se ENCOLA en [syncScope] (la cola
- * interna de Firestore persiste las escrituras pendientes y sobrevive a
- * reinicios) y el modo local se voltea a SHARED inmediatamente — si el
- * dispositivo está offline, la nevera queda SHARED en local y el documento
- * llega al servidor al reconectar. Los ecos del propio upload los descarta
- * el listener (hasPendingWrites).
+ * ESTRICTA contra servidor (igual que el unshare): se espera el ack del
+ * upload — con timeout — y SOLO entonces se voltea el modo a SHARED. La
+ * variante optimista (encolar y voltear ya) se descartó tras verificarla en
+ * dispositivo: el SyncManager engancha el listener en cuanto el modo cambia
+ * y, con las reglas desplegadas (basadas en `resource.data`), escuchar un
+ * doc que AÚN no existe en el servidor responde PERMISSION_DENIED — que
+ * para el dueño significa "revocación" y revertía el share en segundo
+ * plano. Con la espera, el listener solo se engancha a docs ya existentes
+ * y PERMISSION_DENIED conserva su único significado de revocación real.
  *
- * Riesgo asumido y documentado: un rechazo de las reglas de seguridad
- * dejaría el modo local en SHARED sin doc remoto. No debería ocurrir: el
- * dueño cumple las reglas por construcción (escribe su propio doc con su
- * propio uid como propietario).
+ * Si el upload falla o expira, el modo se queda en LOCAL y se ENCOLA un
+ * borrado de compensación: un timeout puede dejar escrituras en la cola
+ * interna de Firestore que se comprometerían más tarde, y ese doc huérfano
+ * debe desaparecer para que remoto y local converjan.
  *
  * Los productos se suben PRESERVANDO sus ids locales (decisión de diseño:
  * no duplicar identidades entre SQLite y Firestore).
@@ -83,15 +89,48 @@ class ShareNeveraUseCase(
                 val productos = productoRepository.getProductosByNeveraOnce(neveraId)
                     .associate { it.id to it.toProductoDoc() }
 
-                // Encolado fire-and-forget: Firestore persiste la escritura
-                // pendiente y la entrega al reconectar.
-                syncScope.launch {
-                    runCatching { remoteRepository.uploadNevera(neveraId, doc, productos) }
+                try {
+                    withTimeout(UPLOAD_TIMEOUT_MS) {
+                        remoteRepository.uploadNevera(neveraId, doc, productos)
+                    }
+                    neveraRepository.updateModo(neveraId, ModoNevera.SHARED)
+                    OperationResult.Success(Unit)
+                } catch (e: TimeoutCancellationException) {
+                    compensarUploadFallido(neveraId)
+                    OperationResult.Error(
+                        "Sin conexión con el servidor. Hacer colaborativa una nevera " +
+                            "requiere conexión; inténtalo de nuevo.",
+                        ErrorCode.NETWORK_ERROR
+                    )
+                } catch (e: CancellationException) {
+                    // Cancelación externa (p.ej. el scope de la UI muere): el
+                    // share se da por no hecho — compensar y propagar.
+                    compensarUploadFallido(neveraId)
+                    throw e
+                } catch (e: Exception) {
+                    compensarUploadFallido(neveraId)
+                    OperationResult.Error(
+                        "No se pudo hacer colaborativa la nevera: ${e.message}",
+                        ErrorCode.NETWORK_ERROR
+                    )
                 }
-
-                neveraRepository.updateModo(neveraId, ModoNevera.SHARED)
-                OperationResult.Success(Unit)
             }
         }
+    }
+
+    /**
+     * El modo local sigue en LOCAL, pero parte del upload puede haber quedado
+     * en la cola interna de Firestore (o incluso comprometido). Encola el
+     * borrado remoto para que el estado remoto converja con el local — es un
+     * no-op si nada llegó a escribirse.
+     */
+    private fun compensarUploadFallido(neveraId: String) {
+        syncScope.launch {
+            runCatching { remoteRepository.deleteNevera(neveraId) }
+        }
+    }
+
+    private companion object {
+        const val UPLOAD_TIMEOUT_MS = 15_000L
     }
 }

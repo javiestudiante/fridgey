@@ -43,6 +43,8 @@ kotlin {
             // `listenablefuture` to the empty 9999.0 stub, so the class must
             // be supplied by Guava itself at compile time too.
             implementation(libs.guava.android)
+            // QR generation for invite codes (see libs.versions.toml note).
+            implementation(libs.zxing.core)
             // ML Kit — the scanner converts CameraX frames to `InputImage`
             // before handing them to the shared `TextRecognizer` wrapper.
             // Already declared as `implementation` in shared/androidMain;

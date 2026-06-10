@@ -1,5 +1,7 @@
 package ule.jescuj00.fridgey.domain.usecase
 
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
 import ule.jescuj00.fridgey.data.remote.firestore.NeveraRemoteRepository
 import ule.jescuj00.fridgey.data.repository.NeveraRepository
 import ule.jescuj00.fridgey.data.sync.SyncManager
@@ -68,7 +70,12 @@ class UnshareNeveraUseCase(
                 } finally {
                     // Si el borrado falló (modo sigue SHARED) esto reengancha
                     // el listener; si se completó (modo LOCAL) no hace nada.
-                    syncManager.resumeSync(neveraId)
+                    // NonCancellable: la UI envuelve esta operación en un
+                    // timeout — si cancela, la reanudación debe ejecutarse
+                    // igualmente o la nevera quedaría pausada para siempre.
+                    withContext(NonCancellable) {
+                        syncManager.resumeSync(neveraId)
+                    }
                 }
             }
         }

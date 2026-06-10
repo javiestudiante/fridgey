@@ -101,11 +101,13 @@ fun NeveraDetailScreen(
     currentUserId: String,
     onNavigateBack: () -> Unit,
     onNavigateToAddProducto: () -> Unit,
+    onNavigateToInvitar: () -> Unit,
     viewModel: NeveraDetailViewModel = koinViewModel()
 ) {
     val state by viewModel.uiState.collectAsState()
     var pendingDelete by remember { mutableStateOf<Producto?>(null) }
     var selectedCategory by remember { mutableStateOf<Categoria?>(null) }
+    var showCompartir by remember { mutableStateOf(false) }
 
     LaunchedEffect(neveraId, currentUserId) {
         viewModel.loadProducts(neveraId, currentUserId)
@@ -126,6 +128,8 @@ fun NeveraDetailScreen(
                     miembros = state.miembros,
                     emptyVariant = false,
                     onBack = onNavigateBack,
+                    mostrarCompartir = state.esPropietario,
+                    onCompartir = { showCompartir = true },
                 )
                 Box(Modifier.fillMaxSize(), Alignment.Center) {
                     Text(state.error!!, color = Rust)
@@ -138,6 +142,8 @@ fun NeveraDetailScreen(
                     miembros = state.miembros,
                     emptyVariant = true,
                     onBack = onNavigateBack,
+                    mostrarCompartir = state.esPropietario,
+                    onCompartir = { showCompartir = true },
                 )
                 EmptyDetail(onScan = onNavigateToAddProducto, onManual = onNavigateToAddProducto)
             }
@@ -148,6 +154,8 @@ fun NeveraDetailScreen(
                 onSelectCategory = { selectedCategory = it },
                 onBack = onNavigateBack,
                 onLongPressDelete = { pendingDelete = it },
+                mostrarCompartir = state.esPropietario,
+                onCompartir = { showCompartir = true },
             )
         }
 
@@ -186,6 +194,103 @@ fun NeveraDetailScreen(
             },
         )
     }
+
+    if (showCompartir) {
+        CompartirDialog(
+            state = state,
+            onDismiss = {
+                showCompartir = false
+                viewModel.limpiarErrorCompartir()
+            },
+            onHacerColaborativa = viewModel::hacerColaborativa,
+            onInvitar = {
+                showCompartir = false
+                onNavigateToInvitar()
+            },
+            onDejarDeCompartir = viewModel::dejarDeCompartir,
+        )
+    }
+}
+
+/**
+ * Diálogo de compartición (solo lo abre el propietario). El contenido se
+ * decide con un `when` exhaustivo sobre [ModoNevera]:
+ *  - LOCAL → toggle "Hacer colaborativa" (transición optimista, encolada).
+ *  - SHARED → "Invitar con código" + "Dejar de compartir" (esta última es
+ *    síncrona contra servidor → spinner; el timeout vive en el ViewModel).
+ */
+@Composable
+private fun CompartirDialog(
+    state: NeveraDetailUiState,
+    onDismiss: () -> Unit,
+    onHacerColaborativa: () -> Unit,
+    onInvitar: () -> Unit,
+    onDejarDeCompartir: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Compartir nevera") },
+        text = {
+            Column {
+                when (state.modo) {
+                    ule.jescuj00.fridgey.domain.model.ModoNevera.LOCAL -> Text(
+                        "Esta nevera vive solo en este dispositivo. Al hacerla " +
+                            "colaborativa se sincroniza en la nube y podrás invitar " +
+                            "hasta 3 personas más (4 miembros en total)."
+                    )
+                    ule.jescuj00.fridgey.domain.model.ModoNevera.SHARED -> Text(
+                        "Esta nevera es colaborativa: se sincroniza en la nube entre " +
+                            "todos sus miembros. Si dejas de compartirla, los " +
+                            "colaboradores perderán el acceso y tú conservarás los datos."
+                    )
+                }
+                state.errorCompartir?.let { error ->
+                    Spacer(Modifier.height(10.dp))
+                    Text(error, color = Rust)
+                }
+            }
+        },
+        confirmButton = {
+            when (state.modo) {
+                ule.jescuj00.fridgey.domain.model.ModoNevera.LOCAL -> TextButton(
+                    onClick = onHacerColaborativa,
+                    enabled = !state.compartiendo,
+                ) {
+                    if (state.compartiendo) {
+                        CircularProgressIndicator(
+                            color = MintDeep, strokeWidth = 2.dp,
+                            modifier = Modifier.size(16.dp),
+                        )
+                        Spacer(Modifier.width(8.dp))
+                    }
+                    Text("Hacer colaborativa", color = MintDeep)
+                }
+                ule.jescuj00.fridgey.domain.model.ModoNevera.SHARED -> TextButton(onClick = onInvitar) {
+                    Text("Invitar con código", color = MintDeep)
+                }
+            }
+        },
+        dismissButton = {
+            when (state.modo) {
+                ule.jescuj00.fridgey.domain.model.ModoNevera.LOCAL -> TextButton(onClick = onDismiss) {
+                    Text("Cancelar")
+                }
+                ule.jescuj00.fridgey.domain.model.ModoNevera.SHARED -> TextButton(
+                    onClick = onDejarDeCompartir,
+                    enabled = !state.dejandoDeCompartir,
+                ) {
+                    if (state.dejandoDeCompartir) {
+                        CircularProgressIndicator(
+                            color = Rust, strokeWidth = 2.dp,
+                            modifier = Modifier.size(16.dp),
+                        )
+                        Spacer(Modifier.width(8.dp))
+                    }
+                    Text("Dejar de compartir", color = Rust)
+                }
+            }
+        },
+    )
 }
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -196,6 +301,8 @@ private fun DetailContent(
     onSelectCategory: (Categoria?) -> Unit,
     onBack: () -> Unit,
     onLongPressDelete: (Producto) -> Unit,
+    mostrarCompartir: Boolean,
+    onCompartir: () -> Unit,
 ) {
     val filtered = remember(state.productos, selectedCategory) {
         if (selectedCategory == null) state.productos
@@ -219,6 +326,8 @@ private fun DetailContent(
                 miembros = state.miembros,
                 emptyVariant = false,
                 onBack = onBack,
+                mostrarCompartir = mostrarCompartir,
+                onCompartir = onCompartir,
             )
         }
         item {
@@ -306,6 +415,8 @@ private fun DetailHeader(
     miembros: List<Usuario>,
     emptyVariant: Boolean,
     onBack: () -> Unit,
+    mostrarCompartir: Boolean = false,
+    onCompartir: () -> Unit = {},
 ) {
     Row(
         modifier = Modifier
@@ -322,12 +433,15 @@ private fun DetailHeader(
             Spacer(Modifier.height(2.dp))
             Text(text = nombre, style = NameStyle, color = Ink)
         }
-        if (emptyVariant) {
-            SquareIconButton(onClick = { /* compartir — sin feature todavía */ }) {
+        if (!emptyVariant) {
+            DetailAvatars(miembros)
+        }
+        // Compartir (UC-03): solo el propietario gestiona la compartición.
+        if (mostrarCompartir) {
+            Spacer(Modifier.width(8.dp))
+            SquareIconButton(onClick = onCompartir) {
                 Icon(Icons.Filled.Share, contentDescription = "Compartir", tint = InkSoft, modifier = Modifier.size(18.dp))
             }
-        } else {
-            DetailAvatars(miembros)
         }
     }
 }

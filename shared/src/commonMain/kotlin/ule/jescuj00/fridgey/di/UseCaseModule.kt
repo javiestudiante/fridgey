@@ -5,8 +5,10 @@ import org.koin.core.qualifier.named
 import org.koin.dsl.module
 import ule.jescuj00.fridgey.domain.scanner.BarcodeScanner
 import ule.jescuj00.fridgey.domain.scanner.TextRecognizer
+import ule.jescuj00.fridgey.domain.usecase.AceptarInvitacionUseCase
 import ule.jescuj00.fridgey.domain.usecase.AddColaboradorUseCase
 import ule.jescuj00.fridgey.domain.usecase.CreateNeveraUseCase
+import ule.jescuj00.fridgey.domain.usecase.GenerarInvitacionUseCase
 import ule.jescuj00.fridgey.domain.usecase.LookupProductByBarcodeUseCase
 import ule.jescuj00.fridgey.domain.usecase.MapOffCategoryUseCase
 import ule.jescuj00.fridgey.domain.usecase.ParseQuantityUseCase
@@ -42,6 +44,8 @@ val useCaseModule: Module = module {
 
     factory { ShareNeveraUseCase(get(), get(), get(), get(), get(named(SYNC_SCOPE_QUALIFIER))) }
     factory { UnshareNeveraUseCase(get(), get(), get()) }
+    factory { GenerarInvitacionUseCase(get(), get()) }
+    factory { AceptarInvitacionUseCase(get(), get(), get()) }
 
     factory { SignInWithGoogleUseCase(get(), get()) }
     factory { SignInWithAppleUseCase(get(), get()) }

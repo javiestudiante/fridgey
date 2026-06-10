@@ -47,3 +47,10 @@ UPDATE Nevera SET updated_at = NULL WHERE id = ?;
 -- Used by the sync to apply remote changes with last-write-wins
 updateFromRemote:
 UPDATE Nevera SET nombre = ?, id_propietario = ?, updated_at = ? WHERE id = ?;
+
+-- Hooks a remote (joined) fridge into the local mirror: the row is born in
+-- SHARED mode so the SyncManager attaches its listener; updated_at stays
+-- NULL until the first listener snapshot stamps the server watermark.
+insertOrIgnoreFromRemote:
+INSERT OR IGNORE INTO Nevera (id, nombre, id_propietario, fecha_creacion, modo, updated_at)
+VALUES (?, ?, ?, ?, 'SHARED', NULL);

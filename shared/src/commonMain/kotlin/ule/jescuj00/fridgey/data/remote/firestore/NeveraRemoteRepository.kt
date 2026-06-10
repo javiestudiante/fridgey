@@ -5,6 +5,7 @@ import dev.gitlive.firebase.firestore.CollectionReference
 import dev.gitlive.firebase.firestore.DocumentReference
 import dev.gitlive.firebase.firestore.FieldValue
 import dev.gitlive.firebase.firestore.FirebaseFirestore
+import dev.gitlive.firebase.firestore.Source
 import dev.gitlive.firebase.firestore.Timestamp
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -47,6 +48,9 @@ class NeveraRemoteRepository(private val firestore: FirebaseFirestore) {
 
     private fun productosRef(neveraId: String): CollectionReference =
         neveraRef(neveraId).collection(COLECCION_PRODUCTOS)
+
+    private fun invitacionRef(codigo: String): DocumentReference =
+        firestore.collection(COLECCION_INVITACIONES).document(codigo)
 
     /**
      * Uploads a whole fridge (LOCAL→SHARED transition), preserving the local
@@ -111,6 +115,72 @@ class NeveraRemoteRepository(private val firestore: FirebaseFirestore) {
             batch.commit()
         }
         neveraRef(neveraId).delete()
+    }
+
+    // --- Invitaciones (UC-03) ---
+    //
+    // All invitation reads go Source.SERVER on purpose: an invitation must be
+    // validated against the live server state, never against a stale cache —
+    // and both generating and accepting one are online-by-nature operations
+    // (the security rules check request.time / the parent doc on the server).
+
+    /**
+     * The fridge doc as the SERVER sees it right now, or null if it does not
+     * exist there (e.g. an upload still sitting in the offline queue).
+     *
+     * NOTE: the rules only let members read a fridge doc — for a non-member
+     * this throws PERMISSION_DENIED, which [AceptarInvitacionUseCase] uses as
+     * the membership probe.
+     */
+    suspend fun getNevera(neveraId: String): NeveraDoc? {
+        val snapshot = neveraRef(neveraId).get(Source.SERVER)
+        return if (snapshot.exists) snapshot.data(NeveraDoc.serializer()) else null
+    }
+
+    /** The invitation for [codigo] as the SERVER sees it, or null. */
+    suspend fun getInvitacion(codigo: String): InvitacionDoc? {
+        val snapshot = invitacionRef(codigo).get(Source.SERVER)
+        return if (snapshot.exists) snapshot.data(InvitacionDoc.serializer()) else null
+    }
+
+    /** Registers a new invitation (rules: only the fridge owner may). */
+    suspend fun createInvitacion(codigo: String, invitacion: InvitacionDoc) {
+        invitacionRef(codigo).set(invitacion)
+    }
+
+    /**
+     * Accepts an invitation atomically: one batch that (a) adds [uid] to the
+     * fridge's `colaboradores` plus their denormalized profile to `miembros`,
+     * and (b) marks the invitation as used. Field-level updates + arrayUnion
+     * on purpose:
+     *  - the rules' self-join clause only allows touching exactly
+     *    `colaboradores` / `miembros` / `updatedAt`;
+     *  - arrayUnion appends without a prior read (a non-member cannot read
+     *    the fridge doc) and is safe under concurrent accepts;
+     *  - the limit (≤ 3 collaborators = 4 users with the owner), expiry and
+     *    single-use are all re-validated server-side by the rules, so a
+     *    PERMISSION_DENIED here means "no longer acceptable", not a bug.
+     *
+     * The miembro travels as a plain map: arrayUnion elements bypass the
+     * kotlinx-serialization encoder, and a map keeps the wire shape identical
+     * on Android today and iOS later.
+     */
+    suspend fun aceptarInvitacion(codigo: String, neveraId: String, uid: String, miembro: MiembroDoc) {
+        val batch = firestore.batch()
+        batch.update(
+            neveraRef(neveraId),
+            "colaboradores" to FieldValue.arrayUnion(uid),
+            "miembros" to FieldValue.arrayUnion(
+                mapOf(
+                    "uid" to miembro.uid,
+                    "nombre" to miembro.nombre,
+                    "fotoUrl" to miembro.fotoUrl,
+                )
+            ),
+            "updatedAt" to FieldValue.serverTimestamp,
+        )
+        batch.update(invitacionRef(codigo), "usada" to true)
+        batch.commit()
     }
 
     /**

@@ -6,9 +6,11 @@ import org.koin.dsl.module
 import ule.jescuj00.fridgey.ui.scanner.DateScannerViewModel
 import ule.jescuj00.fridgey.ui.screens.add_producto.AddProductoViewModel
 import ule.jescuj00.fridgey.ui.screens.create_nevera.CreateNeveraViewModel
+import ule.jescuj00.fridgey.ui.screens.invitar.InvitarViewModel
 import ule.jescuj00.fridgey.ui.screens.login.LoginViewModel
 import ule.jescuj00.fridgey.ui.screens.nevera_detail.NeveraDetailViewModel
 import ule.jescuj00.fridgey.ui.screens.nevera_list.NeveraListViewModel
+import ule.jescuj00.fridgey.ui.screens.unirse.UnirseViewModel
 
 /**
  * Compose ViewModels — registered with Koin so screens can resolve them
@@ -17,9 +19,12 @@ import ule.jescuj00.fridgey.ui.screens.nevera_list.NeveraListViewModel
 fun viewModelModule(): Module = module {
     viewModel { NeveraListViewModel(get()) }
     viewModel { CreateNeveraViewModel(get()) }
-    viewModel { NeveraDetailViewModel(get(), get()) }
+    // get() resolves ProductoRepository, NeveraRepository, Share/Unshare use cases
+    viewModel { NeveraDetailViewModel(get(), get(), get(), get()) }
     viewModel { AddProductoViewModel(get()) }
     viewModel { LoginViewModel(get()) }
+    viewModel { InvitarViewModel(get()) }
+    viewModel { UnirseViewModel(get()) }
     // get() resolves ScanExpirationDateUseCase, BarcodeScanner, LookupProductByBarcodeUseCase
     viewModel { DateScannerViewModel(get(), get(), get()) }
 }

@@ -59,6 +59,10 @@ sqldelight-sqlite-driver = { module = "app.cash.sqldelight:sqlite-driver", versi
 # forces `listenablefuture` to the empty 9999.0 stub, so ListenableFuture must come
 # from Guava itself or CameraPreview stops compiling.
 guava-android = { module = "com.google.guava:guava", version = "32.1.3-android" }
+# QR GENERATION (invite codes). zxing-core is pure JVM, zero transitive deps and the
+# de-facto standard; Android-only — iOS will use the native CIQRCodeGenerator filter
+# instead of a library. (QR READING stays on ML Kit, like the EAN/UPC scanner.)
+zxing-core = { module = "com.google.zxing:core", version = "3.5.3" }
 kotlinx-datetime = { module = "org.jetbrains.kotlinx:kotlinx-datetime", version.ref = "kotlinx-datetime" }
 kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "kotlinx-coroutines" }
 

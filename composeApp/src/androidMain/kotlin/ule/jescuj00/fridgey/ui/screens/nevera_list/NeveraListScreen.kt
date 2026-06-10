@@ -22,6 +22,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.GroupAdd
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material3.Button
@@ -86,6 +87,7 @@ fun NeveraListScreen(
     currentUserId: String,
     onNavigateToCreate: () -> Unit,
     onNavigateToNevera: (String) -> Unit,
+    onNavigateToUnirse: () -> Unit,
     onSignOut: () -> Unit,
     viewModel: NeveraListViewModel = koinViewModel()
 ) {
@@ -109,7 +111,7 @@ fun NeveraListScreen(
             )
 
             state.neveras.isEmpty() -> Column(Modifier.fillMaxSize().statusBarsPadding()) {
-                HomeHeader(onSignOut = onSignOut)
+                HomeHeader(onSignOut = onSignOut, onUnirse = onNavigateToUnirse)
                 EmptyState(onCreatePressed = onNavigateToCreate)
             }
 
@@ -117,6 +119,7 @@ fun NeveraListScreen(
                 state = state,
                 onNavigateToNevera = onNavigateToNevera,
                 onSignOut = onSignOut,
+                onUnirse = onNavigateToUnirse,
             )
         }
 
@@ -146,13 +149,14 @@ private fun HomeContent(
     state: NeveraListUiState,
     onNavigateToNevera: (String) -> Unit,
     onSignOut: () -> Unit,
+    onUnirse: () -> Unit,
 ) {
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
             .statusBarsPadding(),
     ) {
-        item { HomeHeader(onSignOut = onSignOut) }
+        item { HomeHeader(onSignOut = onSignOut, onUnirse = onUnirse) }
 
         // Cross-fridge "caducan hoy" banner — only when there's something today.
         state.expiringToday?.takeIf { it.total > 0 }?.let { summary ->
@@ -198,7 +202,7 @@ private fun HomeContent(
 }
 
 @Composable
-private fun HomeHeader(onSignOut: () -> Unit) {
+private fun HomeHeader(onSignOut: () -> Unit, onUnirse: () -> Unit) {
     val eyebrow = remember { todayEyebrow() }
     Row(
         modifier = Modifier
@@ -215,7 +219,7 @@ private fun HomeHeader(onSignOut: () -> Unit) {
             // Sign-out lives in an honest overflow menu (the bell is
             // decorative — notifications are not a feature yet, and the
             // design's account/"Yo" tab is out of scope this session).
-            OverflowMenu(onSignOut = onSignOut)
+            OverflowMenu(onSignOut = onSignOut, onUnirse = onUnirse)
             Spacer(Modifier.width(8.dp))
             CircleHeaderButton(
                 icon = Icons.Outlined.Notifications,
@@ -227,7 +231,7 @@ private fun HomeHeader(onSignOut: () -> Unit) {
 }
 
 @Composable
-private fun OverflowMenu(onSignOut: () -> Unit) {
+private fun OverflowMenu(onSignOut: () -> Unit, onUnirse: () -> Unit) {
     var expanded by remember { mutableStateOf(false) }
     Box {
         CircleHeaderButton(
@@ -236,6 +240,16 @@ private fun OverflowMenu(onSignOut: () -> Unit) {
             onClick = { expanded = true },
         )
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            DropdownMenuItem(
+                text = { Text("Unirse con código") },
+                leadingIcon = {
+                    Icon(Icons.Filled.GroupAdd, contentDescription = null)
+                },
+                onClick = {
+                    expanded = false
+                    onUnirse()
+                },
+            )
             DropdownMenuItem(
                 text = { Text("Cerrar sesión") },
                 leadingIcon = {

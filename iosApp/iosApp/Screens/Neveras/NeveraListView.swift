@@ -266,14 +266,11 @@ private struct CreateNeveraSheet: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
-                // Cabecera editorial (eyebrow + título serif) + Cancelar.
+                // Cabecera editorial (título serif) + Cancelar.
                 HStack(alignment: .firstTextBaseline) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        EyebrowLabel(text: "NUEVA NEVERA")
-                        Text("Nueva nevera")
-                            .font(.custom("InstrumentSerif-Regular", size: 28))
-                            .foregroundStyle(Color.fridgeyInk)
-                    }
+                    Text("Nueva nevera")
+                        .font(.custom("InstrumentSerif-Regular", size: 28))
+                        .foregroundStyle(Color.fridgeyInk)
                     Spacer()
                     Button(action: { isPresented = false }) {
                         Text("Cancelar")

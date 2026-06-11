@@ -13,10 +13,14 @@ struct AddProductoView: View {
 
     let neveraId: String
     let onCompleted: () -> Void
+    /// Abre el escáner nada más aparecer (entrada "Escanear" del empty state
+    /// del detalle). El flujo normal entra con `false` y usa el toggle.
+    var startScanning: Bool = false
 
     @StateObject private var viewModel = AddProductoViewModel()
 
     @State private var showScanner = false
+    @State private var autoScanLaunched = false
     /// Single source of truth for which (if any) bottom sheet is open.
     ///
     /// The previous implementation used three independent `@State Bool`s
@@ -236,6 +240,16 @@ struct AddProductoView: View {
             }
             .onChange(of: viewModel.state.success) { _, succeeded in
                 if succeeded { onCompleted() }
+            }
+            .onAppear {
+                guard startScanning, !autoScanLaunched else { return }
+                autoScanLaunched = true
+                // Pequeño respiro: presentar el fullScreenCover mientras la
+                // animación del sheet contenedor sigue en vuelo puede perder
+                // la presentación.
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    showScanner = true
+                }
             }
         }
         // Anchor the screen to the cream-on-ink editorial palette. Without

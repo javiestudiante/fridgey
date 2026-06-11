@@ -103,6 +103,7 @@ fun NeveraDetailScreen(
     currentUserId: String,
     onNavigateBack: () -> Unit,
     onNavigateToAddProducto: () -> Unit,
+    onNavigateToScan: () -> Unit,
     onNavigateToInvitar: () -> Unit,
     viewModel: NeveraDetailViewModel = koinViewModel()
 ) {
@@ -147,7 +148,7 @@ fun NeveraDetailScreen(
                     mostrarCompartir = state.esPropietario,
                     onCompartir = { showCompartir = true },
                 )
-                EmptyDetail(onScan = onNavigateToAddProducto, onManual = onNavigateToAddProducto)
+                EmptyDetail(onScan = onNavigateToScan, onManual = onNavigateToAddProducto)
             }
 
             else -> DetailContent(

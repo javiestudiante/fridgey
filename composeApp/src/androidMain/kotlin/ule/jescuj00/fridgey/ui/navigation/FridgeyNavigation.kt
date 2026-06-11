@@ -129,6 +129,14 @@ private fun AuthenticatedGraph(
                 onNavigateToAddProducto = {
                     navController.navigate(Screen.AddProducto.createRoute(neveraId))
                 },
+                onNavigateToScan = {
+                    // "Escanear" del empty state: apila AddProducto y el
+                    // escáner encima, de modo que el handoff del resultado vía
+                    // previousBackStackEntry.savedStateHandle aterriza en
+                    // AddProducto exactamente igual que en el flujo normal.
+                    navController.navigate(Screen.AddProducto.createRoute(neveraId))
+                    navController.navigate(Screen.DateScanner.route)
+                },
                 onNavigateToInvitar = {
                     navController.navigate(Screen.Invitar.createRoute(neveraId))
                 }

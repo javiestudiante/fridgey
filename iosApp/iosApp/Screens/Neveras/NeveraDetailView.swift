@@ -9,6 +9,9 @@ struct NeveraDetailView: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var showAddSheet = false
+    /// El "Escanear" del empty state abre AddProducto con el escáner ya
+    /// lanzado; "Añadir a mano" y el FAB abren el formulario normal.
+    @State private var addSheetStartsScanning = false
     @State private var pendingDelete: Producto?
     @State private var selectedCategory: Categoria?
     @State private var showCompartir = false
@@ -47,8 +50,15 @@ struct NeveraDetailView: View {
             }
         }
         .navigationBarHidden(true)
-        .sheet(isPresented: $showAddSheet) {
-            AddProductoView(neveraId: neveraId, onCompleted: { showAddSheet = false })
+        // La barra oculta desactiva el swipe-back nativo; lo reactivamos sin
+        // quitar la flecha custom (ambas vías de volver conviven).
+        .enableSwipeBack()
+        .sheet(isPresented: $showAddSheet, onDismiss: { addSheetStartsScanning = false }) {
+            AddProductoView(
+                neveraId: neveraId,
+                onCompleted: { showAddSheet = false },
+                startScanning: addSheetStartsScanning
+            )
         }
         .alert("Eliminar producto",
                isPresented: Binding(get: { pendingDelete != nil },
@@ -416,7 +426,10 @@ struct NeveraDetailView: View {
                 .frame(maxWidth: 240)
             Spacer().frame(height: 24)
             HStack(spacing: 10) {
-                Button(action: { showAddSheet = true }) {
+                Button(action: {
+                    addSheetStartsScanning = true
+                    showAddSheet = true
+                }) {
                     Text("Escanear")
                         .font(.custom("Inter-Regular", size: 14).weight(.semibold))
                         .foregroundStyle(Color.fridgeySurfaceWhite)

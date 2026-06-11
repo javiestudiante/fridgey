@@ -245,6 +245,11 @@ struct NeveraListView: View {
 
 // MARK: - Create sheet
 
+/// Hoja de "Nueva nevera" con la estética de la app (cream + tarjetas
+/// SurfaceWhite + controles custom), en vez de Form/Section/Toggle nativos.
+/// Mismo lenguaje visual que el diálogo de compartir del detalle y el
+/// FabChooserSheet. SOLO presentación: la lógica (toggle + encadenado) vive
+/// en el caller; aquí solo se capturan `name` y `guardarEnCuenta`.
 private struct CreateNeveraSheet: View {
     @Binding var isPresented: Bool
     let onCreate: (String, Bool) -> Void
@@ -252,41 +257,137 @@ private struct CreateNeveraSheet: View {
     /// Toggle "Guardar en mi cuenta". APAGADO por defecto (privacidad por
     /// defecto: la nevera nace LOCAL salvo activación explícita).
     @State private var guardarEnCuenta: Bool = false
+    @FocusState private var nameFocused: Bool
+
+    private var canCreate: Bool {
+        !name.trimmingCharacters(in: .whitespaces).isEmpty
+    }
 
     var body: some View {
-        NavigationStack {
-            Form {
-                Section {
-                    TextField("Nombre", text: $name).autocorrectionDisabled()
-                } header: {
-                    Text("Nueva nevera")
-                } footer: {
-                    Text("Ejemplos: Hogar, Casa de la playa, Despensa")
+        ScrollView {
+            VStack(alignment: .leading, spacing: 0) {
+                // Cabecera editorial (eyebrow + título serif) + Cancelar.
+                HStack(alignment: .firstTextBaseline) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        EyebrowLabel(text: "NUEVA NEVERA")
+                        Text("Nueva nevera")
+                            .font(.custom("InstrumentSerif-Regular", size: 28))
+                            .foregroundStyle(Color.fridgeyInk)
+                    }
+                    Spacer()
+                    Button(action: { isPresented = false }) {
+                        Text("Cancelar")
+                            .font(.custom("Inter-Regular", size: 14).weight(.medium))
+                            .foregroundStyle(Color.fridgeyInkSoft)
+                    }
+                    .buttonStyle(.plain)
                 }
 
-                Section {
-                    Toggle("Guardar en mi cuenta", isOn: $guardarEnCuenta)
-                        .tint(Color.fridgeyMintDeep)
-                } footer: {
-                    Text("Podrás verla en todos tus dispositivos y, si quieres, invitar a más personas.")
-                        .italic()
-                }
-            }
-            .navigationTitle("Nueva nevera")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancelar") { isPresented = false }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Crear") {
-                        onCreate(name, guardarEnCuenta)
-                        isPresented = false
+                Spacer().frame(height: 6)
+                Text("Ponle un nombre a tu nevera para identificarla.")
+                    .font(.custom("Inter-Regular", size: 14))
+                    .foregroundStyle(Color.fridgeyInkSoft)
+
+                Spacer().frame(height: 20)
+                // Campo "Nombre" con el estilo de input de la app (no la
+                // cápsula gris del sistema).
+                TextField(
+                    "Nombre",
+                    text: $name,
+                    // `prompt` permite teñir el placeholder: InkMuted, más
+                    // visible que el gris clarísimo por defecto de SwiftUI.
+                    prompt: Text("Nombre").foregroundColor(Color.fridgeyInkMuted)
+                )
+                    .focused($nameFocused)
+                    .autocorrectionDisabled()
+                    // Texto escrito en tinta fuerte (Ink), tamaño cómodo.
+                    .font(.custom("Inter-Regular", size: 17))
+                    .foregroundStyle(Color.fridgeyInk)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 17)
+                    .background(Color.fridgeySurfaceWhite,
+                                in: RoundedRectangle(cornerRadius: 16))
+                    .overlay(RoundedRectangle(cornerRadius: 16)
+                        .stroke(nameFocused ? Color.fridgeyMintDeep : Color.fridgeyHairline,
+                                lineWidth: 1))
+                Spacer().frame(height: 8)
+                Text("Ejemplos: Hogar, Casa de la playa, Despensa")
+                    .font(.custom("Inter-Regular", size: 13))
+                    .foregroundStyle(Color.fridgeyInkMuted)
+
+                Spacer().frame(height: 20)
+                // Tarjeta del toggle "Guardar en mi cuenta" + apunte atenuado.
+                HStack(alignment: .top, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("Guardar en mi cuenta")
+                            .font(.custom("Inter-Regular", size: 16).weight(.medium))
+                            .foregroundStyle(Color.fridgeyInk)
+                        Text("Podrás verla en todos tus dispositivos y, si quieres, invitar a más personas.")
+                            .font(.custom("Inter-Regular", size: 13))
+                            .italic()
+                            .foregroundStyle(Color.fridgeyInkMuted)
                     }
-                    .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
+                    Spacer(minLength: 8)
+                    Toggle("Guardar en mi cuenta", isOn: $guardarEnCuenta)
+                        .toggleStyle(FridgeyToggleStyle())
                 }
+                .padding(16)
+                .background(Color.fridgeySurfaceWhite,
+                            in: RoundedRectangle(cornerRadius: 16))
+                .overlay(RoundedRectangle(cornerRadius: 16)
+                    .stroke(Color.fridgeyHairline, lineWidth: 1))
+
+                Spacer().frame(height: 28)
+                // "Crear" — primario mint, deshabilitado hasta que haya nombre.
+                Button(action: {
+                    onCreate(name, guardarEnCuenta)
+                    isPresented = false
+                }) {
+                    Text("Crear")
+                        .font(.custom("Inter-Regular", size: 15).weight(.semibold))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 14)
+                        .background(
+                            canCreate ? Color.fridgeyMintDeep : Color.fridgeyMintDeep.opacity(0.4),
+                            in: RoundedRectangle(cornerRadius: 16)
+                        )
+                        .foregroundStyle(Color.fridgeySurfaceWhite)
+                }
+                .buttonStyle(.plain)
+                .disabled(!canCreate)
             }
+            .padding(.horizontal, 24)
+            .padding(.top, 24)
+            .padding(.bottom, 24)
         }
+        .background(Color.fridgeyCream)
+        // Nace ya expandido (sin tener que arrastrar para agrandarlo).
+        .presentationDetents([.large])
+        .presentationDragIndicator(.visible)
+    }
+}
+
+/// Interruptor con los tokens de la app. El track en OFF usa un gris marcado
+/// (`InkFaint`) en vez del gris clarísimo del sistema, para que se lea como un
+/// control pulsable aunque esté apagado; en ON, acento mint.
+private struct FridgeyToggleStyle: ToggleStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        Button(action: { configuration.isOn.toggle() }) {
+            ZStack(alignment: configuration.isOn ? .trailing : .leading) {
+                Capsule()
+                    .fill(configuration.isOn ? Color.fridgeyMintDeep : Color.fridgeyInkFaint)
+                    .frame(width: 51, height: 31)
+                Circle()
+                    .fill(Color.white)
+                    .frame(width: 27, height: 27)
+                    .shadow(color: Color.black.opacity(0.15), radius: 1, x: 0, y: 1)
+                    .padding(2)
+            }
+            .animation(.easeInOut(duration: 0.18), value: configuration.isOn)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(Text("Guardar en mi cuenta"))
+        .accessibilityValue(Text(configuration.isOn ? "activado" : "desactivado"))
     }
 }
 

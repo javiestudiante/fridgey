@@ -36,9 +36,9 @@ class FridgeyApplication : Application() {
             modules(sharedModules() + androidModule() + authBridgeModule() + viewModelModule())
         }
 
-        // El sync se engancha al ciclo de auth: login arranca los listeners
-        // de neveras SHARED, logout los para. Arranque SOLO-Android en este
-        // sprint; iOS hará su propio arranque en una sesión posterior.
+        // El sync se engancha al ciclo de auth: login arranca el descubrimiento
+        // en la nube + los listeners de neveras SYNCED, logout los para. iOS
+        // hace su propio arranque equivalente desde bindSyncManagerToAuth.
         val koin = koinApp.koin
         val syncScope = koin.get<CoroutineScope>(named(SYNC_SCOPE_QUALIFIER))
         val syncManager = koin.get<SyncManager>()

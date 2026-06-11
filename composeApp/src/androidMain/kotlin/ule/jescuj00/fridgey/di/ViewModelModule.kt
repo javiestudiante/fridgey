@@ -18,9 +18,11 @@ import ule.jescuj00.fridgey.ui.screens.unirse.UnirseViewModel
  */
 fun viewModelModule(): Module = module {
     viewModel { NeveraListViewModel(get()) }
-    viewModel { CreateNeveraViewModel(get()) }
-    // get() resolves ProductoRepository, NeveraRepository, Share/Unshare use cases
-    viewModel { NeveraDetailViewModel(get(), get(), get(), get()) }
+    // get() resolves CreateNeveraUseCase + SubirANubeUseCase
+    viewModel { CreateNeveraViewModel(get(), get()) }
+    // get() resolves ProductoRepository, NeveraRepository, SubirANube /
+    // DejarDeCompartir / QuitarDeNube use cases (por tipo)
+    viewModel { NeveraDetailViewModel(get(), get(), get(), get(), get()) }
     viewModel { AddProductoViewModel(get()) }
     viewModel { LoginViewModel(get()) }
     viewModel { InvitarViewModel(get()) }

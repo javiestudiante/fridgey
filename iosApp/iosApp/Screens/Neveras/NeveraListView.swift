@@ -7,9 +7,21 @@ struct NeveraListView: View {
     let currentUserId: String
     let onSignOut: () -> Void
 
-    @State private var showCreateSheet = false
     @State private var navTarget: Nevera?
     @State private var showUnirse = false
+    // Un ÚNICO `.sheet(item:)` para el selector del FAB y la hoja de crear:
+    // dos modificadores `.sheet` en la misma vista entran en conflicto en
+    // SwiftUI (solo se honra uno). La acción elegida en el selector se guarda
+    // y se dispara en el onDismiss (presentar la siguiente hoja / navegación
+    // ANTES de que la primera termine de cerrarse también da conflictos).
+    @State private var activeSheet: ActiveSheet?
+    @State private var pendingFabAction: FabAction?
+
+    private enum ActiveSheet: String, Identifiable {
+        case fabChooser, create
+        var id: String { rawValue }
+    }
+    private enum FabAction { case crear, unirse }
 
     init(currentUserId: String, onSignOut: @escaping () -> Void) {
         _viewModel = StateObject(wrappedValue: NeveraListViewModel(currentUserId: currentUserId))
@@ -47,11 +59,41 @@ struct NeveraListView: View {
             .navigationDestination(isPresented: $showUnirse) {
                 UnirseView(currentUserId: currentUserId)
             }
-            .sheet(isPresented: $showCreateSheet) {
-                CreateNeveraSheet(isPresented: $showCreateSheet) { name in
-                    viewModel.createNevera(name: name)
+            // Hoja única: selector del FAB o crear-nevera (ver nota arriba).
+            .sheet(item: $activeSheet, onDismiss: {
+                // Al cerrarse el selector con una opción elegida, presenta la
+                // siguiente (crear = hoja; unirse = navegación push).
+                switch pendingFabAction {
+                case .crear: activeSheet = .create
+                case .unirse: showUnirse = true
+                case nil: break
+                }
+                pendingFabAction = nil
+            }) { which in
+                switch which {
+                case .fabChooser:
+                    FabChooserSheet(
+                        onCrear: { pendingFabAction = .crear; activeSheet = nil },
+                        onUnirse: { pendingFabAction = .unirse; activeSheet = nil }
+                    )
+                case .create:
+                    CreateNeveraSheet(
+                        isPresented: Binding(
+                            get: { activeSheet == .create },
+                            set: { if !$0 { activeSheet = nil } }
+                        )
+                    ) { name, guardarEnCuenta in
+                        viewModel.createNevera(name: name, guardarEnCuenta: guardarEnCuenta)
+                    }
                 }
             }
+            // Aviso NO bloqueante: la nevera se creó en LOCAL pero no se pudo
+            // subir a la cuenta. La creación NO se revierte ni se bloquea.
+            .alert("Nevera creada",
+                   isPresented: Binding(get: { viewModel.state.uploadWarning != nil },
+                                        set: { if !$0 { viewModel.clearUploadWarning() } }),
+                   actions: { Button("Entendido") { viewModel.clearUploadWarning() } },
+                   message: { Text(viewModel.state.uploadWarning ?? "") })
             .onAppear { viewModel.start() }
             .onDisappear { viewModel.stop() }
         }
@@ -119,12 +161,10 @@ struct NeveraListView: View {
             HStack(spacing: 8) {
                 // Sign-out lives in an honest overflow menu; the bell is
                 // decorative (notifications aren't a feature yet).
+                // "Unirse con código" se movió al bottom sheet del FAB; el
+                // menú "⋯" se queda solo con cerrar sesión (punto de entrada
+                // único al flujo de unirse).
                 Menu {
-                    // Paridad con el DropdownMenu de Android: unirse a una
-                    // nevera colaborativa con un código/QR de invitación.
-                    Button(action: { showUnirse = true }) {
-                        Label("Unirse con código", systemImage: "person.badge.plus")
-                    }
                     Button(role: .destructive, action: onSignOut) {
                         Label("Cerrar sesión", systemImage: "rectangle.portrait.and.arrow.right")
                     }
@@ -150,7 +190,7 @@ struct NeveraListView: View {
     // iOS home FAB: 60×60 mint-deep, white "+", soft mint shadow (per the
     // iOS design — distinct from Android's extended mint-soft FAB).
     private var createFab: some View {
-        Button(action: { showCreateSheet = true }) {
+        Button(action: { activeSheet = .fabChooser }) {
             Image(systemName: "plus")
                 .font(.system(size: 24, weight: .medium))
                 .foregroundStyle(Color.fridgeySurfaceWhite)
@@ -207,8 +247,11 @@ struct NeveraListView: View {
 
 private struct CreateNeveraSheet: View {
     @Binding var isPresented: Bool
-    let onCreate: (String) -> Void
+    let onCreate: (String, Bool) -> Void
     @State private var name: String = ""
+    /// Toggle "Guardar en mi cuenta". APAGADO por defecto (privacidad por
+    /// defecto: la nevera nace LOCAL salvo activación explícita).
+    @State private var guardarEnCuenta: Bool = false
 
     var body: some View {
         NavigationStack {
@@ -220,6 +263,14 @@ private struct CreateNeveraSheet: View {
                 } footer: {
                     Text("Ejemplos: Hogar, Casa de la playa, Despensa")
                 }
+
+                Section {
+                    Toggle("Guardar en mi cuenta", isOn: $guardarEnCuenta)
+                        .tint(Color.fridgeyMintDeep)
+                } footer: {
+                    Text("Podrás verla en todos tus dispositivos y, si quieres, invitar a más personas.")
+                        .italic()
+                }
             }
             .navigationTitle("Nueva nevera")
             .navigationBarTitleDisplayMode(.inline)
@@ -229,12 +280,78 @@ private struct CreateNeveraSheet: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Crear") {
-                        onCreate(name)
+                        onCreate(name, guardarEnCuenta)
                         isPresented = false
                     }
                     .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
                 }
             }
         }
+    }
+}
+
+// MARK: - FAB chooser sheet (crear / unirse)
+
+/// Bottom sheet del FAB con dos opciones, paridad visual con el ModalBottomSheet
+/// de Android: tarjeta custom (no `confirmationDialog` del sistema), cada fila
+/// con icono en círculo mint + título + subtítulo atenuado en cursiva.
+private struct FabChooserSheet: View {
+    let onCrear: () -> Void
+    let onUnirse: () -> Void
+
+    var body: some View {
+        VStack(spacing: 0) {
+            FabOptionRow(
+                icon: "plus",
+                title: "Crear nevera nueva",
+                subtitle: "Empieza una nevera vacía",
+                action: onCrear
+            )
+            FabOptionRow(
+                icon: "person.badge.plus",
+                title: "Unirse con un código",
+                subtitle: "Únete a una nevera compartida",
+                action: onUnirse
+            )
+            Spacer(minLength: 0)
+        }
+        .padding(.top, 18)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .background(Color.fridgeyCream)
+        .presentationDetents([.height(210)])
+        .presentationDragIndicator(.visible)
+    }
+}
+
+private struct FabOptionRow: View {
+    let icon: String
+    let title: String
+    let subtitle: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 16) {
+                Image(systemName: icon)
+                    .font(.system(size: 18, weight: .medium))
+                    .foregroundStyle(Color.fridgeyMintDarker)
+                    .frame(width: 40, height: 40)
+                    .background(Color.fridgeyMintSoft, in: Circle())
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(.custom("Inter-Regular", size: 16).weight(.medium))
+                        .foregroundStyle(Color.fridgeyInk)
+                    Text(subtitle)
+                        .font(.custom("Inter-Regular", size: 13))
+                        .italic()
+                        .foregroundStyle(Color.fridgeyInkMuted)
+                }
+                Spacer()
+            }
+            .padding(.horizontal, 24)
+            .padding(.vertical, 14)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 }

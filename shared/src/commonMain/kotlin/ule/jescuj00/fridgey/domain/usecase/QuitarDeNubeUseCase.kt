@@ -10,31 +10,30 @@ import ule.jescuj00.fridgey.domain.model.ModoNevera
 import ule.jescuj00.fridgey.domain.model.OperationResult
 
 /**
- * Transición SHARED → LOCAL: deja de compartir una nevera borrándola de
- * Firestore y conservando la copia local del dueño.
+ * Transición SYNCED → LOCAL: quita una nevera de la cuenta (la baja de la
+ * nube) borrándola de Firestore y conservando la copia local del dueño.
+ * Implica dejar de compartir: sin nube no hay colaboración.
  *
- * A diferencia del share, aquí se ESPERA el ack del servidor en
- * [NeveraRemoteRepository.deleteNevera]: es una operación de revocación de
- * acceso y debe constar como hecha antes de voltear el modo. Offline, esa
- * llamada suspende hasta reconectar — la UI decidirá timeout/spinner en el
- * sprint B.
+ * Se ESPERA el ack del servidor en [NeveraRemoteRepository.deleteNevera]: es
+ * una revocación de acceso y debe constar como hecha antes de voltear el modo.
+ * La UI la envuelve en spinner + timeout.
  *
  * [SyncManager.pauseSync] se invoca antes del borrado para que los ecos
- * REMOVED del borrado masivo de productos no vacíen la copia local del
- * dueño, que debe CONSERVAR sus datos al volver a LOCAL. Los colaboradores,
- * en cambio, pierden la nevera: lo hace su propio SyncManager al ver el doc
+ * REMOVED del borrado masivo de productos no vacíen la copia local del dueño,
+ * que debe CONSERVAR sus datos al volver a LOCAL. Los colaboradores, en
+ * cambio, pierden la nevera: lo hace su propio SyncManager al ver el doc
  * desaparecer (o al recibir PERMISSION_DENIED).
  */
-class UnshareNeveraUseCase(
+class QuitarDeNubeUseCase(
     private val neveraRepository: NeveraRepository,
     private val remoteRepository: NeveraRemoteRepository,
     private val syncManager: SyncManager,
 ) {
 
     /**
-     * Deja de compartir la nevera [neveraId]. Solo el propietario
-     * ([requesterId]) puede hacerlo. Si la nevera ya es LOCAL la operación
-     * es idempotente y devuelve éxito sin tocar nada.
+     * Quita la nevera [neveraId] de la cuenta. Solo el propietario
+     * ([requesterId]) puede hacerlo. Si la nevera ya es LOCAL la operación es
+     * idempotente y devuelve éxito sin tocar nada.
      */
     suspend operator fun invoke(neveraId: String, requesterId: String): OperationResult<Unit> {
         val snapshot = neveraRepository.getSyncSnapshot(neveraId)
@@ -45,7 +44,7 @@ class UnshareNeveraUseCase(
 
         if (snapshot.idPropietario != requesterId) {
             return OperationResult.Error(
-                "Solo el propietario puede dejar de compartir la nevera",
+                "Solo el propietario puede quitar la nevera de su cuenta",
                 ErrorCode.UNAUTHORIZED
             )
         }
@@ -54,7 +53,7 @@ class UnshareNeveraUseCase(
             // Ya es local: idempotente, no hay nada que borrar.
             ModoNevera.LOCAL -> OperationResult.Success(Unit)
 
-            ModoNevera.SHARED -> {
+            ModoNevera.SYNCED -> {
                 syncManager.pauseSync(neveraId)
                 try {
                     // AWAIT deliberado: la revocación debe constar en el
@@ -64,11 +63,11 @@ class UnshareNeveraUseCase(
                     OperationResult.Success(Unit)
                 } catch (e: Exception) {
                     OperationResult.Error(
-                        "No se pudo dejar de compartir: ${e.message}",
+                        "No se pudo quitar la nevera de tu cuenta: ${e.message}",
                         ErrorCode.NETWORK_ERROR
                     )
                 } finally {
-                    // Si el borrado falló (modo sigue SHARED) esto reengancha
+                    // Si el borrado falló (modo sigue SYNCED) esto reengancha
                     // el listener; si se completó (modo LOCAL) no hace nada.
                     // NonCancellable: la UI envuelve esta operación en un
                     // timeout — si cancela, la reanudación debe ejecutarse

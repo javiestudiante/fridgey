@@ -5,6 +5,7 @@ import dev.gitlive.firebase.firestore.CollectionReference
 import dev.gitlive.firebase.firestore.DocumentReference
 import dev.gitlive.firebase.firestore.FieldValue
 import dev.gitlive.firebase.firestore.FirebaseFirestore
+import dev.gitlive.firebase.firestore.QuerySnapshot
 import dev.gitlive.firebase.firestore.Source
 import dev.gitlive.firebase.firestore.Timestamp
 import kotlinx.coroutines.flow.Flow
@@ -22,6 +23,16 @@ sealed interface RemoteProductoChange {
     data class Upsert(val productoId: String, val doc: ProductoDoc, val updatedAtSeconds: Long?) : RemoteProductoChange
     data class Eliminado(val productoId: String) : RemoteProductoChange
 }
+
+/**
+ * A fridge surfaced by the collection-level discovery query (owned or
+ * collaborated). Carries enough to hook it into the local mirror.
+ */
+data class NeveraDescubierta(
+    val neveraId: String,
+    val doc: NeveraDoc,
+    val updatedAtSeconds: Long?,
+)
 
 /**
  * Single point of contact with Firestore for collaborative fridges
@@ -53,7 +64,7 @@ class NeveraRemoteRepository(private val firestore: FirebaseFirestore) {
         firestore.collection(COLECCION_INVITACIONES).document(codigo)
 
     /**
-     * Uploads a whole fridge (LOCAL→SHARED transition), preserving the local
+     * Uploads a whole fridge (LOCAL→SYNCED transition), preserving the local
      * IDs given as map keys so domain references stay valid.
      */
     suspend fun uploadNevera(neveraId: String, nevera: NeveraDoc, productos: Map<String, ProductoDoc>) {
@@ -100,7 +111,80 @@ class NeveraRemoteRepository(private val firestore: FirebaseFirestore) {
     }
 
     /**
-     * Deletes a fridge and everything under it (SHARED→LOCAL transition or
+     * Empties the collaborator set (DejarDeCompartirUseCase): the fridge STAYS
+     * in the cloud (the doc is NOT deleted), only `colaboradores` is cleared
+     * and `miembros` is reduced to the owner. Field-level update so the rest of
+     * the doc (nombre, fechaCreacion) is untouched; the new server timestamp
+     * lets every member's listener converge. Owner-only by the deployed rules.
+     *
+     * The expelled collaborators lose access on their own devices: once they
+     * leave `colaboradores`, their per-fridge listener hits PERMISSION_DENIED.
+     */
+    suspend fun quitarColaboradores(neveraId: String, owner: MiembroDoc) {
+        neveraRef(neveraId).update(
+            "colaboradores" to emptyList<String>(),
+            "miembros" to listOf(
+                mapOf(
+                    "uid" to owner.uid,
+                    "nombre" to owner.nombre,
+                    "fotoUrl" to owner.fotoUrl,
+                )
+            ),
+            "updatedAt" to FieldValue.serverTimestamp,
+        )
+    }
+
+    /**
+     * Live stream of fridges the user OWNS (`idPropietario == uid`). Together
+     * with [observeNeverasColaborando] this is the collection-level discovery
+     * that makes a user's cloud fridges follow them onto a fresh device, where
+     * the local DB is empty and the per-fridge listeners have nothing to attach
+     * to yet. Each emission is the full current result set; the SyncManager
+     * hooks every entry via the idempotent `engancharNeveraRemota`.
+     *
+     * Single-field equality → automatic index, no composite (no Terraform).
+     */
+    fun observeNeverasPropias(uid: String): Flow<List<NeveraDescubierta>> =
+        firestore.collection(COLECCION_NEVERAS)
+            .where { "idPropietario" equalTo uid }
+            .snapshots
+            .map { it.toDescubiertas() }
+
+    /**
+     * Live stream of fridges the user COLLABORATES in (`uid` in the
+     * `colaboradores` array). Closes the same multi-device gap as
+     * [observeNeverasPropias] for the collaborator side (today a collaborator
+     * only gets a fridge via the explicit accept flow). array-contains →
+     * automatic index, no composite (no Terraform).
+     */
+    fun observeNeverasColaborando(uid: String): Flow<List<NeveraDescubierta>> =
+        firestore.collection(COLECCION_NEVERAS)
+            .where { "colaboradores" contains uid }
+            .snapshots
+            .map { it.toDescubiertas() }
+
+    /**
+     * Maps a discovery [QuerySnapshot] to the fridges to hook. Docs still
+     * pending the server ack of our OWN write are skipped (their serverTimestamp
+     * is unresolved); they reappear server-confirmed on the next emission. This
+     * mirrors the anti-echo guard in [observeNevera].
+     */
+    private fun QuerySnapshot.toDescubiertas(): List<NeveraDescubierta> =
+        documents.mapNotNull { snapshot ->
+            if (snapshot.metadata.hasPendingWrites) {
+                null
+            } else {
+                val doc = snapshot.data(NeveraDoc.serializer())
+                NeveraDescubierta(
+                    neveraId = snapshot.id,
+                    doc = doc,
+                    updatedAtSeconds = doc.updatedAt.epochSecondsOrNull(),
+                )
+            }
+        }
+
+    /**
+     * Deletes a fridge and everything under it (SYNCED→LOCAL transition or
      * full removal). Firestore does not cascade subcollection deletes from
      * the client, so the productos are read and deleted explicitly — in
      * batches, and BEFORE the nevera doc: the productos rules get() the

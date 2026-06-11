@@ -9,8 +9,10 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.Row
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -19,7 +21,9 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -27,6 +31,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.unit.dp
 import org.koin.androidx.compose.koinViewModel
 
@@ -89,6 +94,34 @@ fun CreateNeveraScreen(
 
             Spacer(Modifier.height(8.dp))
 
+            // Toggle "Guardar en mi cuenta" — APAGADO por defecto (privacidad
+            // por defecto: la nevera nace LOCAL salvo activación explícita).
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Guardar en mi cuenta",
+                        style = MaterialTheme.typography.bodyLarge
+                    )
+                    Text(
+                        text = "Podrás verla en todos tus dispositivos y, si quieres, " +
+                            "invitar a más personas.",
+                        style = MaterialTheme.typography.bodySmall.copy(fontStyle = FontStyle.Italic),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Spacer(Modifier.size(12.dp))
+                Switch(
+                    checked = state.guardarEnCuenta,
+                    onCheckedChange = viewModel::onGuardarEnCuentaChanged,
+                    enabled = !state.isLoading,
+                )
+            }
+
+            Spacer(Modifier.height(8.dp))
+
             Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
                 Button(
                     onClick = { viewModel.onCreatePressed(currentUserId) },
@@ -107,5 +140,20 @@ fun CreateNeveraScreen(
                 }
             }
         }
+    }
+
+    // Aviso NO bloqueante: la nevera se creó en LOCAL pero no se pudo subir a
+    // la cuenta. Al confirmar, volvemos a la lista igualmente.
+    state.uploadWarning?.let { warning ->
+        AlertDialog(
+            onDismissRequest = { viewModel.onUploadWarningAcknowledged() },
+            title = { Text("Nevera creada") },
+            text = { Text(warning) },
+            confirmButton = {
+                TextButton(onClick = { viewModel.onUploadWarningAcknowledged() }) {
+                    Text("Entendido")
+                }
+            },
+        )
     }
 }

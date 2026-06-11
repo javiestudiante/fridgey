@@ -72,10 +72,10 @@ class GenerarInvitacionUseCase(
 
         when (snapshot.modo) {
             ModoNevera.LOCAL -> return OperationResult.Error(
-                "Haz la nevera colaborativa antes de invitar",
+                "Guarda la nevera en tu cuenta antes de invitar",
                 ErrorCode.INVALID_INPUT
             )
-            ModoNevera.SHARED -> Unit
+            ModoNevera.SYNCED -> Unit
         }
 
         return try {

@@ -30,8 +30,10 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -45,6 +47,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -82,6 +85,7 @@ private val mesesEs = arrayOf(
     "JULIO", "AGOSTO", "SEPTIEMBRE", "OCTUBRE", "NOVIEMBRE", "DICIEMBRE",
 )
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun NeveraListScreen(
     currentUserId: String,
@@ -92,6 +96,7 @@ fun NeveraListScreen(
     viewModel: NeveraListViewModel = koinViewModel()
 ) {
     val state by viewModel.uiState.collectAsState()
+    var showFabSheet by remember { mutableStateOf(false) }
 
     LaunchedEffect(currentUserId) {
         viewModel.observeNeveras(currentUserId)
@@ -111,7 +116,7 @@ fun NeveraListScreen(
             )
 
             state.neveras.isEmpty() -> Column(Modifier.fillMaxSize().statusBarsPadding()) {
-                HomeHeader(onSignOut = onSignOut, onUnirse = onNavigateToUnirse)
+                HomeHeader(onSignOut = onSignOut)
                 EmptyState(onCreatePressed = onNavigateToCreate)
             }
 
@@ -119,15 +124,15 @@ fun NeveraListScreen(
                 state = state,
                 onNavigateToNevera = onNavigateToNevera,
                 onSignOut = onSignOut,
-                onUnirse = onNavigateToUnirse,
             )
         }
 
         // Extended FAB — visible whenever the screen isn't a full-bleed
-        // loading/error placeholder.
+        // loading/error placeholder. Abre un bottom sheet con dos opciones
+        // (crear / unirse) en vez de ir directo a crear.
         if (!(state.isLoading && state.neveras.isEmpty()) && state.error == null) {
             ExtendedFloatingActionButton(
-                onClick = onNavigateToCreate,
+                onClick = { showFabSheet = true },
                 containerColor = MintSoft,
                 contentColor = MintDarker,
                 shape = RoundedCornerShape(18.dp),
@@ -142,6 +147,74 @@ fun NeveraListScreen(
             }
         }
     }
+
+    if (showFabSheet) {
+        ModalBottomSheet(
+            onDismissRequest = { showFabSheet = false },
+            containerColor = Cream,
+        ) {
+            FabOption(
+                icon = Icons.Filled.Add,
+                title = "Crear nevera nueva",
+                subtitle = "Empieza una nevera vacía",
+                onClick = {
+                    showFabSheet = false
+                    onNavigateToCreate()
+                },
+            )
+            FabOption(
+                icon = Icons.Filled.GroupAdd,
+                title = "Unirse con un código",
+                subtitle = "Únete a una nevera compartida",
+                onClick = {
+                    showFabSheet = false
+                    onNavigateToUnirse()
+                },
+            )
+            Spacer(Modifier.height(16.dp).navigationBarsPadding())
+        }
+    }
+}
+
+/** Fila de opción del bottom sheet del FAB: icono en círculo mint + título
+ *  (Inter medium) + subtítulo atenuado. */
+@Composable
+private fun FabOption(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    title: String,
+    subtitle: String,
+    onClick: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 24.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(40.dp)
+                .clip(CircleShape)
+                .background(MintSoft),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(icon, contentDescription = null, tint = MintDarker, modifier = Modifier.size(20.dp))
+        }
+        Spacer(Modifier.width(16.dp))
+        Column {
+            Text(
+                title,
+                style = TextStyle(fontFamily = Inter, fontWeight = FontWeight.Medium, fontSize = 16.sp),
+                color = Ink,
+            )
+            Text(
+                subtitle,
+                style = TextStyle(fontFamily = Inter, fontStyle = FontStyle.Italic, fontSize = 13.sp),
+                color = InkMuted,
+            )
+        }
+    }
 }
 
 @Composable
@@ -149,14 +222,13 @@ private fun HomeContent(
     state: NeveraListUiState,
     onNavigateToNevera: (String) -> Unit,
     onSignOut: () -> Unit,
-    onUnirse: () -> Unit,
 ) {
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
             .statusBarsPadding(),
     ) {
-        item { HomeHeader(onSignOut = onSignOut, onUnirse = onUnirse) }
+        item { HomeHeader(onSignOut = onSignOut) }
 
         // Cross-fridge "caducan hoy" banner — only when there's something today.
         state.expiringToday?.takeIf { it.total > 0 }?.let { summary ->
@@ -202,7 +274,7 @@ private fun HomeContent(
 }
 
 @Composable
-private fun HomeHeader(onSignOut: () -> Unit, onUnirse: () -> Unit) {
+private fun HomeHeader(onSignOut: () -> Unit) {
     val eyebrow = remember { todayEyebrow() }
     Row(
         modifier = Modifier
@@ -219,7 +291,7 @@ private fun HomeHeader(onSignOut: () -> Unit, onUnirse: () -> Unit) {
             // Sign-out lives in an honest overflow menu (the bell is
             // decorative — notifications are not a feature yet, and the
             // design's account/"Yo" tab is out of scope this session).
-            OverflowMenu(onSignOut = onSignOut, onUnirse = onUnirse)
+            OverflowMenu(onSignOut = onSignOut)
             Spacer(Modifier.width(8.dp))
             CircleHeaderButton(
                 icon = Icons.Outlined.Notifications,
@@ -231,7 +303,7 @@ private fun HomeHeader(onSignOut: () -> Unit, onUnirse: () -> Unit) {
 }
 
 @Composable
-private fun OverflowMenu(onSignOut: () -> Unit, onUnirse: () -> Unit) {
+private fun OverflowMenu(onSignOut: () -> Unit) {
     var expanded by remember { mutableStateOf(false) }
     Box {
         CircleHeaderButton(
@@ -240,16 +312,6 @@ private fun OverflowMenu(onSignOut: () -> Unit, onUnirse: () -> Unit) {
             onClick = { expanded = true },
         )
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-            DropdownMenuItem(
-                text = { Text("Unirse con código") },
-                leadingIcon = {
-                    Icon(Icons.Filled.GroupAdd, contentDescription = null)
-                },
-                onClick = {
-                    expanded = false
-                    onUnirse()
-                },
-            )
             DropdownMenuItem(
                 text = { Text("Cerrar sesión") },
                 leadingIcon = {

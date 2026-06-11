@@ -84,7 +84,7 @@ class AceptarInvitacionUseCase(
             }
 
             // Now a member → the fridge doc is readable; hook it into the
-            // local mirror in SHARED mode (the SyncManager picks it up and
+            // local mirror in SYNCED mode (the SyncManager picks it up and
             // streams in the products).
             val nevera = remoteRepository.getNevera(invitacion.neveraId)
             if (nevera != null) {

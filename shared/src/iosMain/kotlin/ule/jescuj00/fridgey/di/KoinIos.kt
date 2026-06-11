@@ -20,12 +20,13 @@ import ule.jescuj00.fridgey.domain.scanner.BarcodeScanner
 import ule.jescuj00.fridgey.domain.usecase.AceptarInvitacionUseCase
 import ule.jescuj00.fridgey.domain.usecase.AddColaboradorUseCase
 import ule.jescuj00.fridgey.domain.usecase.CreateNeveraUseCase
+import ule.jescuj00.fridgey.domain.usecase.DejarDeCompartirUseCase
 import ule.jescuj00.fridgey.domain.usecase.GenerarInvitacionUseCase
 import ule.jescuj00.fridgey.domain.usecase.LookupProductByBarcodeUseCase
+import ule.jescuj00.fridgey.domain.usecase.QuitarDeNubeUseCase
 import ule.jescuj00.fridgey.domain.usecase.RemoveColaboradorUseCase
 import ule.jescuj00.fridgey.domain.usecase.ScanExpirationDateUseCase
-import ule.jescuj00.fridgey.domain.usecase.ShareNeveraUseCase
-import ule.jescuj00.fridgey.domain.usecase.UnshareNeveraUseCase
+import ule.jescuj00.fridgey.domain.usecase.SubirANubeUseCase
 import ule.jescuj00.fridgey.domain.usecase.auth.ObserveAuthStateUseCase
 import ule.jescuj00.fridgey.domain.usecase.auth.SignInWithAppleUseCase
 import ule.jescuj00.fridgey.domain.usecase.auth.SignInWithGoogleUseCase
@@ -62,9 +63,10 @@ fun getScanExpirationDateUseCase(): ScanExpirationDateUseCase = KoinAccessor.get
 fun getBarcodeScanner(): BarcodeScanner = KoinAccessor.get()
 fun getLookupProductByBarcodeUseCase(): LookupProductByBarcodeUseCase = KoinAccessor.get()
 
-// --- Neveras colaborativas (Sprint B) ---
-fun getShareNeveraUseCase(): ShareNeveraUseCase = KoinAccessor.get()
-fun getUnshareNeveraUseCase(): UnshareNeveraUseCase = KoinAccessor.get()
+// --- Neveras en la nube + colaboración ---
+fun getSubirANubeUseCase(): SubirANubeUseCase = KoinAccessor.get()
+fun getQuitarDeNubeUseCase(): QuitarDeNubeUseCase = KoinAccessor.get()
+fun getDejarDeCompartirUseCase(): DejarDeCompartirUseCase = KoinAccessor.get()
 fun getGenerarInvitacionUseCase(): GenerarInvitacionUseCase = KoinAccessor.get()
 fun getAceptarInvitacionUseCase(): AceptarInvitacionUseCase = KoinAccessor.get()
 
@@ -88,8 +90,9 @@ fun getExpiringTodayBinder(): ExpiringTodayBinder = KoinAccessor.get()
 
 /**
  * Ties the [SyncManager] lifecycle to the auth cycle, mirroring EXACTLY what
- * `FridgeyApplication` does on Android: login starts the Firestore listeners
- * for SHARED fridges, logout stops them. Lives in Kotlin (not Swift) so both
+ * `FridgeyApplication` does on Android: login starts the cloud discovery +
+ * listeners for SYNCED fridges, logout stops them. Lives in Kotlin (not Swift)
+ * so both
  * platforms share the same lifecycle semantics — Swift just calls this once
  * from `iOSApp.init`, right after [initKoin].
  */

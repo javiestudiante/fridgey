@@ -1,0 +1,14 @@
+-- Migration: schema version 3 -> 4
+--
+-- Renames the persistence-axis value 'SHARED' -> 'SYNCED' on existing rows.
+--
+-- The two-axis refactor splits "in the cloud" (LOCAL/SYNCED) from "shared with
+-- others" (now a DERIVED property: a non-empty `colaboradores` set, not a
+-- stored state). Rows previously stamped 'SHARED' meant "in the cloud" and
+-- become 'SYNCED'. Without this rewrite, ModoNevera.fromString would degrade
+-- those rows to LOCAL and the owner would lose the cloud flag of fridges they
+-- had already uploaded.
+--
+-- Data-only migration: no table structure changes, so the schema still
+-- matches Nevera.sq's CREATE (the column DEFAULT stays 'LOCAL').
+UPDATE Nevera SET modo = 'SYNCED' WHERE modo = 'SHARED';

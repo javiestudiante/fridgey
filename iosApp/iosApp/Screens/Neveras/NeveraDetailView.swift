@@ -67,40 +67,8 @@ struct NeveraDetailView: View {
                                     set: { if !$0 { viewModel.clearError() } }),
                actions: { Button("OK") { viewModel.clearError() } },
                message: { Text(viewModel.state.error ?? "") })
-        // --- Compartir (Sprint B, paridad con el diálogo Android) ---
-        .confirmationDialog("Compartir nevera",
-                            isPresented: $showCompartir,
-                            titleVisibility: .visible) {
-            // Equivalente al `when` exhaustivo de Android: ModoNevera es un
-            // enum de Kotlin (clase en Swift), así que se ramifica con
-            // if/else sobre sus dos valores.
-            if viewModel.state.modo == ModoNevera.local {
-                Button("Hacer colaborativa") { viewModel.hacerColaborativa() }
-                Button("Cancelar", role: .cancel) {}
-            } else {
-                Button("Invitar con código") { navInvitar = true }
-                Button("Dejar de compartir", role: .destructive) {
-                    viewModel.dejarDeCompartir()
-                }
-                Button("Cancelar", role: .cancel) {}
-            }
-        } message: {
-            if viewModel.state.modo == ModoNevera.local {
-                Text("Esta nevera vive solo en este dispositivo. Al hacerla "
-                     + "colaborativa se sincroniza en la nube y podrás invitar "
-                     + "hasta 3 personas más (4 miembros en total).")
-            } else {
-                Text("Esta nevera es colaborativa: se sincroniza en la nube "
-                     + "entre todos sus miembros. Si dejas de compartirla, los "
-                     + "colaboradores perderán el acceso y tú conservarás los datos.")
-            }
-        }
-        .alert("Compartir nevera",
-               isPresented: Binding(get: { viewModel.state.errorCompartir != nil },
-                                    set: { if !$0 { viewModel.limpiarErrorCompartir() } }),
-               actions: { Button("OK") { viewModel.limpiarErrorCompartir() } },
-               message: { Text(viewModel.state.errorCompartir ?? "") })
-        .overlay { transicionOverlay }
+        // --- Nube + colaboración (paridad con el diálogo Android) ---
+        .overlay { compartirDialogOverlay }
         .navigationDestination(isPresented: $navInvitar) {
             InvitarView(neveraId: neveraId, currentUserId: currentUserId)
         }
@@ -108,26 +76,174 @@ struct NeveraDetailView: View {
         .onDisappear { viewModel.stop() }
     }
 
-    /// Spinner bloqueante mientras una transición LOCAL↔SHARED espera el ack
-    /// del servidor (espejo de los spinners del diálogo Android).
+    // MARK: - Diálogo de compartición (tarjeta custom, paridad con Android)
+
+    private func dismissCompartir() {
+        showCompartir = false
+        viewModel.limpiarErrorCompartir()
+    }
+
+    /// Diálogo del propietario para gestionar los dos ejes. El contenido se
+    /// decide con un `switch` EXHAUSTIVO sobre [ModoNeveraUI] y, dentro de
+    /// SYNCED, según el derivado `tieneColaboradores`. Permanece abierto
+    /// durante las transiciones (spinner en línea) y se re-renderiza al
+    /// cambiar el estado — igual que el AlertDialog de Android.
     @ViewBuilder
-    private var transicionOverlay: some View {
-        if viewModel.state.compartiendo || viewModel.state.dejandoDeCompartir {
+    private var compartirDialogOverlay: some View {
+        if showCompartir {
             ZStack {
                 Color.black.opacity(0.25).ignoresSafeArea()
-                VStack(spacing: 12) {
-                    ProgressView().tint(Color.fridgeyMintDeep)
-                    Text(viewModel.state.compartiendo
-                         ? "Haciendo colaborativa…"
-                         : "Dejando de compartir…")
-                        .font(.custom("Inter-Regular", size: 14).weight(.medium))
-                        .foregroundStyle(Color.fridgeyInk)
+                    .onTapGesture { dismissCompartir() }
+
+                VStack(alignment: .leading, spacing: 0) {
+                    switch viewModel.state.modo {
+                    case .local:
+                        dialogLocal
+                    case .synced:
+                        dialogSynced
+                    }
                 }
-                .padding(24)
+                .padding(22)
                 .background(Color.fridgeySurfaceWhite,
-                            in: RoundedRectangle(cornerRadius: 18))
+                            in: RoundedRectangle(cornerRadius: 20))
+                .overlay(RoundedRectangle(cornerRadius: 20)
+                    .stroke(Color.fridgeyHairline, lineWidth: 1))
+                .padding(.horizontal, 36)
             }
         }
+    }
+
+    /// LOCAL → confirmación de "Guardar en mi cuenta" con el cuerpo exacto y el
+    /// apunte de invitar ATENUADO (cursiva + color suave), igual de secundario
+    /// que en Android.
+    private var dialogLocal: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text("Guardar en mi cuenta")
+                .font(.custom("Inter-Regular", size: 18).weight(.semibold))
+                .foregroundStyle(Color.fridgeyInk)
+            Spacer().frame(height: 12)
+            Text("Tu nevera quedará guardada de forma segura y podrás verla "
+                 + "desde cualquier móvil o tablet donde inicies sesión.")
+                .font(.custom("Inter-Regular", size: 14))
+                .foregroundStyle(Color.fridgeyInkSoft)
+            Spacer().frame(height: 10)
+            Text("Y si quieres, después podrás invitar a más personas a esta nevera.")
+                .font(.custom("Inter-Regular", size: 13))
+                .italic()
+                .foregroundStyle(Color.fridgeyInkMuted)
+
+            errorCompartirText
+
+            Spacer().frame(height: 18)
+            HStack(spacing: 8) {
+                Spacer()
+                dialogTextButton("Cancelar", color: .fridgeyInkSoft) { dismissCompartir() }
+                dialogTextButton("Guardar en mi cuenta", color: .fridgeyMintDeep,
+                                 loading: viewModel.state.guardando) {
+                    viewModel.guardarEnMiCuenta()
+                }
+            }
+        }
+    }
+
+    /// SYNCED → menú de acciones: invitar + (dejar de compartir si hay
+    /// colaboradores) + quitar de mi cuenta.
+    private var dialogSynced: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text("Compartir nevera")
+                .font(.custom("Inter-Regular", size: 18).weight(.semibold))
+                .foregroundStyle(Color.fridgeyInk)
+            Spacer().frame(height: 12)
+            Text(viewModel.state.tieneColaboradores
+                 ? "Esta nevera está en tu cuenta y compartida con otras personas. "
+                   + "Se sincroniza en la nube entre todos sus miembros."
+                 : "Esta nevera está guardada en tu cuenta: la verás en cualquier "
+                   + "dispositivo donde inicies sesión. Invita a otras personas "
+                   + "para compartirla.")
+                .font(.custom("Inter-Regular", size: 14))
+                .foregroundStyle(Color.fridgeyInkSoft)
+
+            errorCompartirText
+
+            Spacer().frame(height: 14)
+            dialogActionRow("Invitar con código", color: .fridgeyMintDeep) {
+                showCompartir = false
+                navInvitar = true
+            }
+            // "Dejar de compartir" solo con colaboradores (eje derivado).
+            if viewModel.state.tieneColaboradores {
+                dialogActionRow("Dejar de compartir", color: .fridgeyInk,
+                                loading: viewModel.state.dejandoDeCompartir) {
+                    viewModel.dejarDeCompartir()
+                }
+            }
+            dialogActionRow("Quitar de mi cuenta", color: .fridgeyRust,
+                            loading: viewModel.state.quitando) {
+                viewModel.quitarDeMiCuenta()
+            }
+            HStack {
+                Spacer()
+                dialogTextButton("Cancelar", color: .fridgeyInkSoft) { dismissCompartir() }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var errorCompartirText: some View {
+        if let error = viewModel.state.errorCompartir {
+            Spacer().frame(height: 10)
+            Text(error)
+                .font(.custom("Inter-Regular", size: 13))
+                .foregroundStyle(Color.fridgeyRust)
+        }
+    }
+
+    /// Acción a fila completa (variante SYNCED), con spinner en línea.
+    private func dialogActionRow(
+        _ label: String,
+        color: Color,
+        loading: Bool = false,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            HStack(spacing: 8) {
+                if loading {
+                    ProgressView().tint(color).controlSize(.small)
+                }
+                Text(label)
+                    .font(.custom("Inter-Regular", size: 15).weight(.medium))
+                    .foregroundStyle(color)
+                Spacer()
+            }
+            .padding(.vertical, 10)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(loading)
+    }
+
+    /// Botón de texto compacto (Cancelar / confirmación), con spinner en línea.
+    private func dialogTextButton(
+        _ label: String,
+        color: Color,
+        loading: Bool = false,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            HStack(spacing: 6) {
+                if loading {
+                    ProgressView().tint(color).controlSize(.small)
+                }
+                Text(label)
+                    .font(.custom("Inter-Regular", size: 14).weight(.semibold))
+                    .foregroundStyle(color)
+            }
+            .padding(.vertical, 6)
+            .padding(.horizontal, 8)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(loading)
     }
 
     // MARK: - Content (3 urgency shelves)

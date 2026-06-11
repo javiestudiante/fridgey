@@ -94,8 +94,8 @@ class NeveraRepositoryLocalDeleteTest {
 
     @Test
     fun `revertirANoCompartida conserva productos y limpia colaboradores y watermark`() = runTest {
-        // Simulate a fridge that was SHARED and had synced at least once.
-        db.neveraQueries.updateModo(modo = "SHARED", id = "nev-1")
+        // Simulate a fridge that was SYNCED and had synced at least once.
+        db.neveraQueries.updateModo(modo = "SYNCED", id = "nev-1")
         db.neveraQueries.updateFromRemote(
             nombre = "Principal",
             id_propietario = "owner",

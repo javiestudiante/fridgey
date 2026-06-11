@@ -60,6 +60,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import org.koin.androidx.compose.koinViewModel
 import ule.jescuj00.fridgey.domain.model.Categoria
+import ule.jescuj00.fridgey.domain.model.ModoNevera
 import ule.jescuj00.fridgey.domain.model.Producto
 import ule.jescuj00.fridgey.domain.model.UnidadMedida
 import ule.jescuj00.fridgey.domain.model.Usuario
@@ -74,6 +75,7 @@ import ule.jescuj00.fridgey.ui.theme.BackButtonShape
 import ule.jescuj00.fridgey.ui.theme.Cream
 import ule.jescuj00.fridgey.ui.theme.Hairline
 import ule.jescuj00.fridgey.ui.theme.Ink
+import ule.jescuj00.fridgey.ui.theme.InkMuted
 import ule.jescuj00.fridgey.ui.theme.InkSoft
 import ule.jescuj00.fridgey.ui.theme.InstrumentSerif
 import ule.jescuj00.fridgey.ui.theme.Inter
@@ -202,95 +204,169 @@ fun NeveraDetailScreen(
                 showCompartir = false
                 viewModel.limpiarErrorCompartir()
             },
-            onHacerColaborativa = viewModel::hacerColaborativa,
+            onGuardar = viewModel::guardarEnMiCuenta,
             onInvitar = {
                 showCompartir = false
                 onNavigateToInvitar()
             },
             onDejarDeCompartir = viewModel::dejarDeCompartir,
+            onQuitar = viewModel::quitarDeMiCuenta,
         )
     }
 }
 
 /**
- * Diálogo de compartición (solo lo abre el propietario). El contenido se
- * decide con un `when` exhaustivo sobre [ModoNevera]:
- *  - LOCAL → toggle "Hacer colaborativa" (transición optimista, encolada).
- *  - SHARED → "Invitar con código" + "Dejar de compartir" (esta última es
- *    síncrona contra servidor → spinner; el timeout vive en el ViewModel).
+ * Diálogo del propietario para gestionar los dos ejes (nube + colaboración).
+ * El contenido se decide con un `when` exhaustivo sobre [ModoNevera] y, dentro
+ * de SYNCED, según el derivado `tieneColaboradores`:
+ *  - LOCAL → confirmación de "Guardar en mi cuenta" (SubirANube; síncrona →
+ *    spinner; el timeout vive en el use case).
+ *  - SYNCED sin colaboradores → "Invitar con código" + "Quitar de mi cuenta".
+ *  - SYNCED con colaboradores → "Invitar con código" + "Dejar de compartir"
+ *    + "Quitar de mi cuenta".
+ *
+ * El diálogo permanece abierto durante las transiciones (spinner en línea) y
+ * se re-renderiza al cambiar el estado: tras "Guardar" pasa a las opciones de
+ * nube; tras "Quitar" vuelve a "Guardar"; tras "Dejar de compartir"
+ * desaparece esa acción.
  */
 @Composable
 private fun CompartirDialog(
     state: NeveraDetailUiState,
     onDismiss: () -> Unit,
-    onHacerColaborativa: () -> Unit,
+    onGuardar: () -> Unit,
     onInvitar: () -> Unit,
     onDejarDeCompartir: () -> Unit,
+    onQuitar: () -> Unit,
 ) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Compartir nevera") },
-        text = {
-            Column {
-                when (state.modo) {
-                    ule.jescuj00.fridgey.domain.model.ModoNevera.LOCAL -> Text(
-                        "Esta nevera vive solo en este dispositivo. Al hacerla " +
-                            "colaborativa se sincroniza en la nube y podrás invitar " +
-                            "hasta 3 personas más (4 miembros en total)."
+    when (state.modo) {
+        // --- LOCAL: confirmación de "Guardar en mi cuenta" ---
+        ModoNevera.LOCAL -> AlertDialog(
+            onDismissRequest = onDismiss,
+            title = { Text("Guardar en mi cuenta") },
+            text = {
+                Column {
+                    Text(
+                        "Tu nevera quedará guardada de forma segura y podrás verla " +
+                            "desde cualquier móvil o tablet donde inicies sesión."
                     )
-                    ule.jescuj00.fridgey.domain.model.ModoNevera.SHARED -> Text(
-                        "Esta nevera es colaborativa: se sincroniza en la nube entre " +
-                            "todos sus miembros. Si dejas de compartirla, los " +
-                            "colaboradores perderán el acceso y tú conservarás los datos."
-                    )
-                }
-                state.errorCompartir?.let { error ->
                     Spacer(Modifier.height(10.dp))
-                    Text(error, color = Rust)
+                    // Apunte secundario atenuado: cursiva + color más suave,
+                    // claramente menos prominente que el cuerpo.
+                    Text(
+                        "Y si quieres, después podrás invitar a más personas a esta nevera.",
+                        style = TextStyle(
+                            fontFamily = Inter,
+                            fontStyle = FontStyle.Italic,
+                            fontSize = 13.sp,
+                        ),
+                        color = InkMuted,
+                    )
+                    state.errorCompartir?.let { error ->
+                        Spacer(Modifier.height(10.dp))
+                        Text(error, color = Rust)
+                    }
                 }
-            }
-        },
-        confirmButton = {
-            when (state.modo) {
-                ule.jescuj00.fridgey.domain.model.ModoNevera.LOCAL -> TextButton(
-                    onClick = onHacerColaborativa,
-                    enabled = !state.compartiendo,
-                ) {
-                    if (state.compartiendo) {
+            },
+            confirmButton = {
+                TextButton(onClick = onGuardar, enabled = !state.guardando) {
+                    if (state.guardando) {
                         CircularProgressIndicator(
                             color = MintDeep, strokeWidth = 2.dp,
                             modifier = Modifier.size(16.dp),
                         )
                         Spacer(Modifier.width(8.dp))
                     }
-                    Text("Hacer colaborativa", color = MintDeep)
+                    Text("Guardar en mi cuenta", color = MintDeep)
                 }
-                ule.jescuj00.fridgey.domain.model.ModoNevera.SHARED -> TextButton(onClick = onInvitar) {
-                    Text("Invitar con código", color = MintDeep)
-                }
-            }
-        },
-        dismissButton = {
-            when (state.modo) {
-                ule.jescuj00.fridgey.domain.model.ModoNevera.LOCAL -> TextButton(onClick = onDismiss) {
-                    Text("Cancelar")
-                }
-                ule.jescuj00.fridgey.domain.model.ModoNevera.SHARED -> TextButton(
-                    onClick = onDejarDeCompartir,
-                    enabled = !state.dejandoDeCompartir,
-                ) {
-                    if (state.dejandoDeCompartir) {
-                        CircularProgressIndicator(
-                            color = Rust, strokeWidth = 2.dp,
-                            modifier = Modifier.size(16.dp),
+            },
+            dismissButton = {
+                TextButton(onClick = onDismiss) { Text("Cancelar") }
+            },
+        )
+
+        // --- SYNCED: menú de acciones de nube/colaboración ---
+        ModoNevera.SYNCED -> AlertDialog(
+            onDismissRequest = onDismiss,
+            title = { Text("Compartir nevera") },
+            text = {
+                Column {
+                    Text(
+                        if (state.tieneColaboradores) {
+                            "Esta nevera está en tu cuenta y compartida con otras personas. " +
+                                "Se sincroniza en la nube entre todos sus miembros."
+                        } else {
+                            "Esta nevera está guardada en tu cuenta: la verás en cualquier " +
+                                "dispositivo donde inicies sesión. Invita a otras personas " +
+                                "para compartirla."
+                        }
+                    )
+                    Spacer(Modifier.height(8.dp))
+
+                    DialogAction(
+                        label = "Invitar con código",
+                        color = MintDeep,
+                        enabled = !state.dejandoDeCompartir && !state.quitando,
+                        onClick = onInvitar,
+                    )
+                    // "Dejar de compartir" solo cuando hay colaboradores (eje
+                    // derivado): vacía colaboradores pero sigue en la nube.
+                    if (state.tieneColaboradores) {
+                        DialogAction(
+                            label = "Dejar de compartir",
+                            color = Ink,
+                            loading = state.dejandoDeCompartir,
+                            enabled = !state.quitando,
+                            onClick = onDejarDeCompartir,
                         )
-                        Spacer(Modifier.width(8.dp))
                     }
-                    Text("Dejar de compartir", color = Rust)
+                    DialogAction(
+                        label = "Quitar de mi cuenta",
+                        color = Rust,
+                        loading = state.quitando,
+                        enabled = !state.dejandoDeCompartir,
+                        onClick = onQuitar,
+                    )
+
+                    state.errorCompartir?.let { error ->
+                        Spacer(Modifier.height(10.dp))
+                        Text(error, color = Rust)
+                    }
                 }
-            }
-        },
-    )
+            },
+            confirmButton = {
+                TextButton(onClick = onDismiss) { Text("Cancelar") }
+            },
+        )
+    }
+}
+
+/**
+ * Acción a fila completa dentro del menú de compartición (variante SYNCED),
+ * con spinner en línea durante las transiciones síncronas.
+ */
+@Composable
+private fun DialogAction(
+    label: String,
+    color: Color,
+    loading: Boolean = false,
+    enabled: Boolean = true,
+    onClick: () -> Unit,
+) {
+    TextButton(
+        onClick = onClick,
+        enabled = enabled && !loading,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        if (loading) {
+            CircularProgressIndicator(
+                color = color, strokeWidth = 2.dp,
+                modifier = Modifier.size(16.dp),
+            )
+            Spacer(Modifier.width(8.dp))
+        }
+        Text(label, color = color, modifier = Modifier.weight(1f))
+    }
 }
 
 @OptIn(ExperimentalFoundationApi::class)

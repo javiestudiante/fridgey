@@ -3,7 +3,7 @@ CREATE TABLE IF NOT EXISTS Nevera (
     nombre TEXT NOT NULL,
     id_propietario TEXT NOT NULL,
     fecha_creacion INTEGER NOT NULL,  -- Unix timestamp (seconds)
-    modo TEXT NOT NULL DEFAULT 'LOCAL',  -- ModoNevera.valor: 'LOCAL' | 'SHARED'
+    modo TEXT NOT NULL DEFAULT 'LOCAL',  -- ModoNevera.valor: 'LOCAL' | 'SYNCED'
     updated_at INTEGER,  -- último serverTimestamp de Firestore aplicado (epoch seconds); NULL si nunca sincronizada
     FOREIGN KEY (id_propietario) REFERENCES Usuario(id) ON DELETE CASCADE
 );
@@ -34,8 +34,8 @@ deleteById:
 DELETE FROM Nevera WHERE id = ?;
 
 -- Feeds the SyncManager: which fridges need a Firestore listener
-selectSharedIds:
-SELECT id FROM Nevera WHERE modo = 'SHARED';
+selectSyncedIds:
+SELECT id FROM Nevera WHERE modo = 'SYNCED';
 
 updateModo:
 UPDATE Nevera SET modo = ? WHERE id = ?;
@@ -48,9 +48,10 @@ UPDATE Nevera SET updated_at = NULL WHERE id = ?;
 updateFromRemote:
 UPDATE Nevera SET nombre = ?, id_propietario = ?, updated_at = ? WHERE id = ?;
 
--- Hooks a remote (joined) fridge into the local mirror: the row is born in
--- SHARED mode so the SyncManager attaches its listener; updated_at stays
--- NULL until the first listener snapshot stamps the server watermark.
+-- Hooks a remote fridge (discovered by ownership/collaboration, or just
+-- joined) into the local mirror: the row is born in SYNCED mode so the
+-- SyncManager attaches its listener; updated_at stays NULL until the first
+-- listener snapshot stamps the server watermark.
 insertOrIgnoreFromRemote:
 INSERT OR IGNORE INTO Nevera (id, nombre, id_propietario, fecha_creacion, modo, updated_at)
-VALUES (?, ?, ?, ?, 'SHARED', NULL);
+VALUES (?, ?, ?, ?, 'SYNCED', NULL);

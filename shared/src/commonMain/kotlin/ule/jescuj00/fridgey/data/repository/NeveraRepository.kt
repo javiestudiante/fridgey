@@ -41,7 +41,7 @@ class NeveraRepository(
     // Lazy on purpose: constructing the repository must never force Firestore
     // (Firebase) initialization — LOCAL-only code paths, and their unit
     // tests, run without it. The instance is materialized on the first
-    // SHARED push.
+    // SYNCED push.
     private val remoteRepository: Lazy<NeveraRemoteRepository>,
     private val syncScope: CoroutineScope,
 ) {
@@ -216,7 +216,7 @@ class NeveraRepository(
         }
 
     /**
-     * Renames a fridge locally and — only when the fridge is SHARED — enqueues
+     * Renames a fridge locally and — only when the fridge is SYNCED — enqueues
      * the rename to Firestore (fire-and-forget: Firestore's offline queue plus
      * the snapshot listeners + last-write-wins guarantee convergence, so a
      * failed push must never break the local operation).
@@ -227,7 +227,7 @@ class NeveraRepository(
             val row = neveraQueries.selectById(neveraId).executeAsOneOrNull()
                 ?: return@withContext
             when (ModoNevera.fromString(row.modo)) {
-                ModoNevera.SHARED -> syncScope.launch {
+                ModoNevera.SYNCED -> syncScope.launch {
                     runCatching { remoteRepository.value.updateNombre(neveraId, nuevoNombre) }
                 }
                 ModoNevera.LOCAL -> Unit
@@ -235,7 +235,7 @@ class NeveraRepository(
         }
 
     /**
-     * Deletes a fridge and all its dependent rows. If it was SHARED, the
+     * Deletes a fridge and all its dependent rows. If it was SYNCED, the
      * deletion is also enqueued to Firestore (fire-and-forget).
      */
     suspend fun deleteNevera(neveraId: String): Unit = withContext(Dispatchers.Default) {
@@ -250,7 +250,7 @@ class NeveraRepository(
             neveraQueries.deleteById(neveraId)
         }
         when (ModoNevera.fromString(row.modo)) {
-            ModoNevera.SHARED -> syncScope.launch {
+            ModoNevera.SYNCED -> syncScope.launch {
                 runCatching { remoteRepository.value.deleteNevera(neveraId) }
             }
             ModoNevera.LOCAL -> Unit
@@ -316,10 +316,10 @@ class NeveraRepository(
                 .count { it.id_propietario == usuarioId }
         }
 
-    // --- LOCAL/SHARED sync ---
+    // --- LOCAL/SYNCED sync ---
 
     /**
-     * Switches a fridge between [ModoNevera.LOCAL] and [ModoNevera.SHARED].
+     * Switches a fridge between [ModoNevera.LOCAL] and [ModoNevera.SYNCED].
      */
     suspend fun updateModo(neveraId: String, modo: ModoNevera): Unit =
         withContext(Dispatchers.Default) {
@@ -327,13 +327,13 @@ class NeveraRepository(
         }
 
     /**
-     * Emits the set of fridge IDs currently in SHARED mode. Feeds the
-     * SyncManager so it can start/stop Firestore listeners as fridges enter
-     * or leave the shared mode. [distinctUntilChanged] avoids re-emitting on
-     * unrelated Nevera table writes.
+     * Emits the set of fridge IDs currently in SYNCED mode. Feeds the
+     * SyncManager so it can start/stop the per-fridge Firestore listeners as
+     * fridges enter or leave the cloud. [distinctUntilChanged] avoids
+     * re-emitting on unrelated Nevera table writes.
      */
-    fun observeSharedNeveraIds(): Flow<Set<String>> =
-        neveraQueries.selectSharedIds()
+    fun observeSyncedNeveraIds(): Flow<Set<String>> =
+        neveraQueries.selectSyncedIds()
             .asFlow()
             .mapToList(Dispatchers.Default)
             .map { it.toSet() }
@@ -427,11 +427,15 @@ class NeveraRepository(
     }
 
     /**
-     * Hooks a fridge the user just joined (or re-joined) into the local
-     * mirror: creates the row directly in SHARED mode — which makes the
-     * SyncManager attach its listener — and folds the given remote snapshot
-     * in. Idempotent: re-joining an already-mirrored fridge only refreshes
-     * its data. Products arrive via the listener, not here.
+     * Hooks a remote fridge into the local mirror: creates the row directly in
+     * SYNCED mode — which makes the SyncManager attach its per-fridge listener
+     * — and folds the given remote snapshot in. Used both by the invite-accept
+     * flow and by the SyncManager's collection discovery (owned + collaborated
+     * fridges), so the cloud follows the user onto a fresh device. Idempotent:
+     * re-hooking an already-mirrored fridge only refreshes its data, which is
+     * why concurrent emissions from the collection listener and the per-doc
+     * listener cannot conflict (both funnel through [aplicarNeveraRemota]'s
+     * last-write-wins). Products arrive via the listener, not here.
      */
     suspend fun engancharNeveraRemota(
         neveraId: String,
@@ -448,10 +452,11 @@ class NeveraRepository(
     }
 
     /**
-     * The fridge stops being shared but the owner KEEPS the data: back to
-     * LOCAL mode, sync state cleared and collaborators removed. Products are
-     * kept — their stale `updated_at` values are harmless once the fridge no
-     * longer syncs.
+     * The fridge leaves the cloud (SYNCED→LOCAL) but the owner KEEPS the data:
+     * back to LOCAL mode, sync state cleared and collaborators removed (without
+     * the cloud there is no collaboration). Products are kept — their stale
+     * `updated_at` values are harmless once the fridge no longer syncs.
+     * Used by QuitarDeNubeUseCase.
      */
     suspend fun revertirANoCompartida(neveraId: String): Unit =
         withContext(Dispatchers.Default) {
@@ -460,6 +465,19 @@ class NeveraRepository(
                 neveraQueries.clearSyncState(neveraId)
                 colaboradorQueries.deleteAllByNevera(neveraId)
             }
+        }
+
+    /**
+     * Drops every local collaborator row WITHOUT leaving the cloud: the fridge
+     * stays SYNCED and keeps syncing across the owner's devices. Used by
+     * DejarDeCompartirUseCase for immediate local consistency after the remote
+     * `colaboradores` array is emptied; the live per-fridge listener later
+     * re-confirms the same empty set (idempotent). The `modo` and the sync
+     * watermark are left untouched on purpose — this is NOT a cloud exit.
+     */
+    suspend fun vaciarColaboradoresLocal(neveraId: String): Unit =
+        withContext(Dispatchers.Default) {
+            colaboradorQueries.deleteAllByNevera(neveraId)
         }
 
     /**
@@ -493,7 +511,7 @@ class NeveraRepository(
 
 /**
  * Sync-layer view of a fridge row: the raw persisted fields plus the
- * LOCAL/SHARED mode and the last APPLIED remote server timestamp.
+ * LOCAL/SYNCED mode and the last APPLIED remote server timestamp.
  */
 data class NeveraSyncSnapshot(
     val id: String,

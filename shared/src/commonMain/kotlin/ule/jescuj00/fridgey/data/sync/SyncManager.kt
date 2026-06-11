@@ -6,11 +6,13 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.retryWhen
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import ule.jescuj00.fridgey.data.remote.firestore.NeveraDescubierta
 import ule.jescuj00.fridgey.data.remote.firestore.NeveraRemoteRepository
 import ule.jescuj00.fridgey.data.remote.firestore.RemoteNeveraEvent
 import ule.jescuj00.fridgey.data.remote.firestore.RemoteProductoChange
@@ -18,19 +20,21 @@ import ule.jescuj00.fridgey.data.repository.NeveraRepository
 import ule.jescuj00.fridgey.data.repository.ProductoRepository
 
 /**
- * Orquestador de la sincronización Firestore ↔ SQLDelight para neveras
- * colaborativas.
+ * Orquestador de la sincronización Firestore ↔ SQLDelight para neveras en la
+ * nube.
  *
- * Mantiene un listener remoto (doc de nevera + colección de productos) por
- * cada nevera local en modo [ule.jescuj00.fridgey.domain.model.ModoNevera.SHARED],
+ * Tiene dos motores: (1) un descubrimiento por colección que descarga las
+ * neveras del usuario en la nube (propias + colaborando) y las engancha en
+ * local, y (2) un listener remoto (doc de nevera + colección de productos) por
+ * cada nevera local en modo [ule.jescuj00.fridgey.domain.model.ModoNevera.SYNCED],
  * reconciliando el conjunto de listeners cada vez que cambia el conjunto de
- * neveras compartidas observado en la base local.
+ * neveras SYNCED en la base local.
  *
- * Vive en commonMain, pero en este sprint SOLO Android lo arranca
- * (FridgeyApplication lo engancha al ciclo de autenticación: login →
- * [start], logout → [stop]); iOS se enganchará en una sesión posterior.
+ * Vive en commonMain y lo arrancan ambas plataformas al autenticarse
+ * (Android desde FridgeyApplication, iOS desde bindSyncManagerToAuth):
+ * login → [start], logout → [stop].
  *
- * Solo se escuchan neveras SHARED; la resolución de conflictos
+ * Solo se escuchan neveras SYNCED; la resolución de conflictos
  * (last-write-wins por serverTimestamp) se aplica en los repositorios,
  * no aquí.
  */
@@ -49,13 +53,20 @@ class SyncManager(
     private var uid: String? = null
     private var reconcileJob: Job? = null
 
+    /**
+     * Colectores de descubrimiento por colección (propias + colaborando):
+     * descargan y enganchan las neveras del usuario en la nube aunque la BD
+     * local esté vacía (dispositivo nuevo). Es el corazón multi-dispositivo.
+     */
+    private val discoveryJobs = mutableListOf<Job>()
+
     /** Listener activo (doc + productos) por id de nevera. */
     private val listeners = mutableMapOf<String, Job>()
 
     /** Neveras con el sync suspendido temporalmente vía [pauseSync]. */
     private val pausadas = mutableSetOf<String>()
 
-    /** Último conjunto de ids SHARED emitido por la base local. */
+    /** Último conjunto de ids SYNCED emitido por la base local. */
     private var ultimasIds: Set<String> = emptySet()
 
     /**
@@ -68,31 +79,40 @@ class SyncManager(
     /**
      * Arranca el orquestador para el usuario [uid].
      *
-     * Llama a [stop] primero para que un re-login deje el estado limpio.
-     * A partir de aquí observa el conjunto de neveras SHARED locales y
-     * reconcilia los listeners remotos contra él.
+     * Llama a [stop] primero para que un re-login deje el estado limpio. Hace
+     * DOS cosas en paralelo:
+     *  1. Descubrimiento remoto por colección ([descubrirNeverasDelUsuario]):
+     *     descarga las neveras del usuario en la nube (propias + colaborando)
+     *     y las engancha en local — así la nube le sigue a un dispositivo nuevo.
+     *  2. Reconciliación local-driven: observa el conjunto de neveras SYNCED
+     *     locales (alimentado por (1) y por el flujo de aceptar invitación) y
+     *     mantiene un listener por-nevera (doc + productos) contra él.
      */
     fun start(scope: CoroutineScope, uid: String) {
         stop()
         this.scope = scope
         this.uid = uid
         reconcileJob = scope.launch {
-            neveraRepository.observeSharedNeveraIds().collect { ids ->
+            neveraRepository.observeSyncedNeveraIds().collect { ids ->
                 mutex.withLock {
                     ultimasIds = ids
                     reconciliar()
                 }
             }
         }
+        descubrirNeverasDelUsuario(scope, uid)
     }
 
     /**
-     * Para el orquestador: cancela la reconciliación y todos los listeners
-     * y limpia el estado interno. Se invoca en logout y al re-arrancar.
+     * Para el orquestador: cancela el descubrimiento, la reconciliación y
+     * todos los listeners, y limpia el estado interno. Se invoca en logout y
+     * al re-arrancar.
      */
     fun stop() {
         reconcileJob?.cancel()
         reconcileJob = null
+        discoveryJobs.forEach { it.cancel() }
+        discoveryJobs.clear()
         listeners.values.forEach { it.cancel() }
         listeners.clear()
         pausadas.clear()
@@ -101,10 +121,48 @@ class SyncManager(
     }
 
     /**
+     * Lanza los dos colectores de descubrimiento por colección. Cada nevera
+     * descubierta se engancha vía el idempotente
+     * [NeveraRepository.engancharNeveraRemota], que la inserta en modo SYNCED
+     * → la reconciliación local-driven le ata su listener por-nevera. Que el
+     * colector de descubrimiento y el listener por-doc apliquen el mismo doc a
+     * la vez es seguro: ambos pasan por `aplicarNeveraRemota` (last-write-wins,
+     * idempotente).
+     */
+    private fun descubrirNeverasDelUsuario(scope: CoroutineScope, uid: String) {
+        discoveryJobs += scope.launch {
+            colectarDescubrimiento(remoteRepository.observeNeverasPropias(uid))
+        }
+        discoveryJobs += scope.launch {
+            colectarDescubrimiento(remoteRepository.observeNeverasColaborando(uid))
+        }
+    }
+
+    /**
+     * Colecta un flujo de descubrimiento y engancha cada nevera. Reintenta
+     * errores transitorios con el mismo backoff exponencial que los listeners
+     * por-doc. No hay caso PERMISSION_DENIED a tratar: una query de colección
+     * sobre `idPropietario==uid` / `colaboradores arrayContains uid` solo
+     * devuelve docs que las reglas permiten leer, así que nunca se deniega.
+     */
+    private suspend fun colectarDescubrimiento(flujo: Flow<List<NeveraDescubierta>>) {
+        flujo
+            .retryWhen { _, attempt ->
+                delay(backoff(attempt))
+                true
+            }
+            .collect { descubiertas ->
+                for (d in descubiertas) {
+                    neveraRepository.engancharNeveraRemota(d.neveraId, d.doc, d.updatedAtSeconds)
+                }
+            }
+    }
+
+    /**
      * Suspende temporalmente el sync de [neveraId] (cancela su listener y la
      * marca como pausada para que la reconciliación no lo relance).
      *
-     * Lo usa UnshareNeveraUseCase antes de borrar la nevera de Firestore:
+     * Lo usa QuitarDeNubeUseCase antes de borrar la nevera de Firestore:
      * sin esta pausa, los ecos REMOVED del borrado masivo de productos
      * vaciarían la copia local del dueño, que debe conservar sus datos al
      * volver a modo LOCAL.
@@ -119,8 +177,8 @@ class SyncManager(
     /**
      * Levanta la pausa de [neveraId] y reconcilia.
      *
-     * Si el unshare falló (el modo local sigue SHARED) esto reengancha el
-     * listener; si se completó (modo LOCAL) la nevera ya no está en el
+     * Si el quitar-de-nube falló (el modo local sigue SYNCED) esto reengancha
+     * el listener; si se completó (modo LOCAL) la nevera ya no está en el
      * conjunto objetivo y no hay nada que reenganchar.
      */
     suspend fun resumeSync(neveraId: String) {
@@ -132,7 +190,7 @@ class SyncManager(
 
     /**
      * Reconcilia los listeners activos contra el conjunto objetivo
-     * (neveras SHARED menos pausadas). Debe llamarse con [mutex] cogido.
+     * (neveras SYNCED menos pausadas). Debe llamarse con [mutex] cogido.
      */
     private fun reconciliar() {
         val scope = this.scope ?: return

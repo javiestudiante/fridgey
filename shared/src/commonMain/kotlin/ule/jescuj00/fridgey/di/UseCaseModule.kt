@@ -8,14 +8,15 @@ import ule.jescuj00.fridgey.domain.scanner.TextRecognizer
 import ule.jescuj00.fridgey.domain.usecase.AceptarInvitacionUseCase
 import ule.jescuj00.fridgey.domain.usecase.AddColaboradorUseCase
 import ule.jescuj00.fridgey.domain.usecase.CreateNeveraUseCase
+import ule.jescuj00.fridgey.domain.usecase.DejarDeCompartirUseCase
 import ule.jescuj00.fridgey.domain.usecase.GenerarInvitacionUseCase
 import ule.jescuj00.fridgey.domain.usecase.LookupProductByBarcodeUseCase
 import ule.jescuj00.fridgey.domain.usecase.MapOffCategoryUseCase
 import ule.jescuj00.fridgey.domain.usecase.ParseQuantityUseCase
+import ule.jescuj00.fridgey.domain.usecase.QuitarDeNubeUseCase
 import ule.jescuj00.fridgey.domain.usecase.RemoveColaboradorUseCase
 import ule.jescuj00.fridgey.domain.usecase.ScanExpirationDateUseCase
-import ule.jescuj00.fridgey.domain.usecase.ShareNeveraUseCase
-import ule.jescuj00.fridgey.domain.usecase.UnshareNeveraUseCase
+import ule.jescuj00.fridgey.domain.usecase.SubirANubeUseCase
 import ule.jescuj00.fridgey.domain.usecase.auth.ObserveAuthStateUseCase
 import ule.jescuj00.fridgey.domain.usecase.auth.SignInWithAppleUseCase
 import ule.jescuj00.fridgey.domain.usecase.auth.SignInWithGoogleUseCase
@@ -42,8 +43,9 @@ val useCaseModule: Module = module {
     factory { MapOffCategoryUseCase() }
     factory { LookupProductByBarcodeUseCase(get()) }
 
-    factory { ShareNeveraUseCase(get(), get(), get(), get(), get(named(SYNC_SCOPE_QUALIFIER))) }
-    factory { UnshareNeveraUseCase(get(), get(), get()) }
+    factory { SubirANubeUseCase(get(), get(), get(), get(), get(named(SYNC_SCOPE_QUALIFIER))) }
+    factory { QuitarDeNubeUseCase(get(), get(), get()) }
+    factory { DejarDeCompartirUseCase(get(), get(), get()) }
     factory { GenerarInvitacionUseCase(get(), get()) }
     factory { AceptarInvitacionUseCase(get(), get(), get()) }
 

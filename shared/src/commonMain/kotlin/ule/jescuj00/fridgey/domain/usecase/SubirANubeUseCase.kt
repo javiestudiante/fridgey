@@ -17,28 +17,29 @@ import ule.jescuj00.fridgey.domain.model.ModoNevera
 import ule.jescuj00.fridgey.domain.model.OperationResult
 
 /**
- * Transición LOCAL → SHARED: hace colaborativa una nevera subiéndola a
- * Firestore junto con sus productos.
+ * Transición LOCAL → SYNCED: sube una nevera a la nube SIN invitar a nadie.
+ * Tras subir, la nevera sigue al usuario en cualquier dispositivo donde inicie
+ * sesión; sigue siendo solo suya (`colaboradores` vacío) hasta que,
+ * opcionalmente, genere una invitación aparte (eje 2, derivado).
  *
- * ESTRICTA contra servidor (igual que el unshare): se espera el ack del
- * upload — con timeout — y SOLO entonces se voltea el modo a SHARED. La
- * variante optimista (encolar y voltear ya) se descartó tras verificarla en
- * dispositivo: el SyncManager engancha el listener en cuanto el modo cambia
- * y, con las reglas desplegadas (basadas en `resource.data`), escuchar un
- * doc que AÚN no existe en el servidor responde PERMISSION_DENIED — que
- * para el dueño significa "revocación" y revertía el share en segundo
- * plano. Con la espera, el listener solo se engancha a docs ya existentes
- * y PERMISSION_DENIED conserva su único significado de revocación real.
+ * ESTRICTA contra servidor: se espera el ack del upload — con timeout — y SOLO
+ * entonces se voltea el modo a SYNCED. La variante optimista (encolar y voltear
+ * ya) se descartó tras verificarla en dispositivo: el SyncManager engancha el
+ * listener en cuanto el modo cambia y, con las reglas desplegadas (basadas en
+ * `resource.data`), escuchar un doc que AÚN no existe en el servidor responde
+ * PERMISSION_DENIED — que para el dueño significa "revocación" y revertía el
+ * cambio en segundo plano. Con la espera, el listener solo se engancha a docs
+ * ya existentes y PERMISSION_DENIED conserva su único significado real.
  *
- * Si el upload falla o expira, el modo se queda en LOCAL y se ENCOLA un
- * borrado de compensación: un timeout puede dejar escrituras en la cola
- * interna de Firestore que se comprometerían más tarde, y ese doc huérfano
- * debe desaparecer para que remoto y local converjan.
+ * Si el upload falla o expira, el modo se queda en LOCAL y se ENCOLA un borrado
+ * de compensación: un timeout puede dejar escrituras en la cola interna de
+ * Firestore que se comprometerían más tarde, y ese doc huérfano debe
+ * desaparecer para que remoto y local converjan.
  *
- * Los productos se suben PRESERVANDO sus ids locales (decisión de diseño:
- * no duplicar identidades entre SQLite y Firestore).
+ * Los productos se suben PRESERVANDO sus ids locales (decisión de diseño: no
+ * duplicar identidades entre SQLite y Firestore).
  */
-class ShareNeveraUseCase(
+class SubirANubeUseCase(
     private val neveraRepository: NeveraRepository,
     private val productoRepository: ProductoRepository,
     private val usuarioRepository: UsuarioRepository,
@@ -47,8 +48,8 @@ class ShareNeveraUseCase(
 ) {
 
     /**
-     * Hace colaborativa la nevera [neveraId]. Solo el propietario
-     * ([requesterId]) puede hacerlo. Si la nevera ya es SHARED la operación
+     * Sube la nevera [neveraId] a la cuenta del usuario. Solo el propietario
+     * ([requesterId]) puede hacerlo. Si la nevera ya está SYNCED la operación
      * es idempotente y devuelve éxito sin tocar nada.
      */
     suspend operator fun invoke(neveraId: String, requesterId: String): OperationResult<Unit> {
@@ -60,14 +61,14 @@ class ShareNeveraUseCase(
 
         if (snapshot.idPropietario != requesterId) {
             return OperationResult.Error(
-                "Solo el propietario puede hacer colaborativa la nevera",
+                "Solo el propietario puede guardar la nevera en su cuenta",
                 ErrorCode.UNAUTHORIZED
             )
         }
 
         return when (snapshot.modo) {
-            // Ya compartida: idempotente, no hay nada que subir.
-            ModoNevera.SHARED -> OperationResult.Success(Unit)
+            // Ya está en la nube: idempotente, no hay nada que subir.
+            ModoNevera.SYNCED -> OperationResult.Success(Unit)
 
             ModoNevera.LOCAL -> {
                 val owner = usuarioRepository.getUsuarioById(requesterId)
@@ -93,24 +94,24 @@ class ShareNeveraUseCase(
                     withTimeout(UPLOAD_TIMEOUT_MS) {
                         remoteRepository.uploadNevera(neveraId, doc, productos)
                     }
-                    neveraRepository.updateModo(neveraId, ModoNevera.SHARED)
+                    neveraRepository.updateModo(neveraId, ModoNevera.SYNCED)
                     OperationResult.Success(Unit)
                 } catch (e: TimeoutCancellationException) {
                     compensarUploadFallido(neveraId)
                     OperationResult.Error(
-                        "Sin conexión con el servidor. Hacer colaborativa una nevera " +
+                        "Sin conexión con el servidor. Guardar la nevera en tu cuenta " +
                             "requiere conexión; inténtalo de nuevo.",
                         ErrorCode.NETWORK_ERROR
                     )
                 } catch (e: CancellationException) {
-                    // Cancelación externa (p.ej. el scope de la UI muere): el
-                    // share se da por no hecho — compensar y propagar.
+                    // Cancelación externa (p.ej. el scope de la UI muere): la
+                    // subida se da por no hecha — compensar y propagar.
                     compensarUploadFallido(neveraId)
                     throw e
                 } catch (e: Exception) {
                     compensarUploadFallido(neveraId)
                     OperationResult.Error(
-                        "No se pudo hacer colaborativa la nevera: ${e.message}",
+                        "No se pudo guardar la nevera en tu cuenta: ${e.message}",
                         ErrorCode.NETWORK_ERROR
                     )
                 }

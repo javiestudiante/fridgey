@@ -93,3 +93,19 @@ enum ResultadoInvitacionUI {
         }
     }
 }
+
+// MARK: - ModoNevera (Kotlin enum) → Swift enum
+
+/// Swift-side mirror of the Kotlin `ModoNevera` (eje de persistencia). Kotlin
+/// enums cross to Swift as classes with static instances, sobre los que NO se
+/// puede hacer un `switch` exhaustivo comprobado por el compilador. Este enum
+/// lo restaura (mismo patrón que [ResultadoInvitacionUI]); al haber solo dos
+/// casos y degradar `fromString` lo desconocido a LOCAL, el mapeo es total.
+enum ModoNeveraUI {
+    case local
+    case synced
+
+    init(_ kotlin: ModoNevera) {
+        self = (kotlin == ModoNevera.synced) ? .synced : .local
+    }
+}

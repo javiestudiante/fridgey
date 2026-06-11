@@ -27,7 +27,7 @@ class ProductoRepository(
     private val queries: ProductoQueries,
     private val neveraQueries: NeveraQueries,
     // Lazy for the same reason as in NeveraRepository: building the repo must
-    // not force Firestore initialization; only the first SHARED push does.
+    // not force Firestore initialization; only the first SYNCED push does.
     private val remoteRepository: Lazy<NeveraRemoteRepository>,
     private val syncScope: CoroutineScope,
 ) {
@@ -71,7 +71,7 @@ class ProductoRepository(
             dias_aviso_antes = producto.diasAvisoAntes.toLong(),
             unidad = producto.unidad.valor,
         )
-        pushSiShared(producto.idNevera) {
+        pushSiSynced(producto.idNevera) {
             remoteRepository.value.setProducto(producto.idNevera, producto.id, producto.toProductoDoc())
         }
     }
@@ -87,7 +87,7 @@ class ProductoRepository(
             unidad = producto.unidad.valor,
             id = producto.id,
         )
-        pushSiShared(producto.idNevera) {
+        pushSiSynced(producto.idNevera) {
             remoteRepository.value.setProducto(producto.idNevera, producto.id, producto.toProductoDoc())
         }
     }
@@ -98,31 +98,31 @@ class ProductoRepository(
         val row = queries.selectById(productoId).executeAsOneOrNull()
             ?: return@withContext
         queries.deleteById(productoId)
-        pushSiShared(row.id_nevera) {
+        pushSiSynced(row.id_nevera) {
             remoteRepository.value.deleteProducto(row.id_nevera, productoId)
         }
     }
 
     /**
-     * Enqueues [push] to Firestore only when the product's fridge is SHARED
+     * Enqueues [push] to Firestore only when the product's fridge is SYNCED
      * (LOCAL fridges never touch Firestore). Fire-and-forget: the local
      * operation never fails because of the push — Firestore queues it while
      * offline and the snapshot listeners + last-write-wins reconcile.
      */
-    private fun pushSiShared(neveraId: String, push: suspend () -> Unit) {
+    private fun pushSiSynced(neveraId: String, push: suspend () -> Unit) {
         val modo = neveraQueries.selectById(neveraId).executeAsOneOrNull()
             ?.modo?.let(ModoNevera::fromString) ?: ModoNevera.LOCAL
         when (modo) {
-            ModoNevera.SHARED -> syncScope.launch { runCatching { push() } }
+            ModoNevera.SYNCED -> syncScope.launch { runCatching { push() } }
             ModoNevera.LOCAL -> Unit
         }
     }
 
-    // --- LOCAL/SHARED sync ---
+    // --- LOCAL/SYNCED sync ---
 
     /**
      * One-shot snapshot of a fridge's products, used to upload the existing
-     * inventory during the LOCAL→SHARED transition.
+     * inventory during the LOCAL→SYNCED transition.
      */
     suspend fun getProductosByNeveraOnce(neveraId: String): List<Producto> =
         withContext(Dispatchers.Default) {
@@ -134,7 +134,7 @@ class ProductoRepository(
      * has no server timestamp yet, if the local row has never been synced, or
      * if the remote timestamp is not older than the last one applied locally
      * ([updatedAtSeconds] >= local `updated_at`); otherwise discarded as
-     * stale. Guarded so that only products of an existing SHARED fridge are
+     * stale. Guarded so that only products of an existing SYNCED fridge are
      * written — this avoids resurrecting products of fridges that were
      * deleted locally or reverted to LOCAL.
      */
@@ -147,7 +147,7 @@ class ProductoRepository(
         val neveraRow = neveraQueries.selectById(neveraId).executeAsOneOrNull()
             ?: return@withContext
         when (ModoNevera.fromString(neveraRow.modo)) {
-            ModoNevera.SHARED -> Unit
+            ModoNevera.SYNCED -> Unit
             ModoNevera.LOCAL -> return@withContext
         }
         val existing = queries.selectById(productoId).executeAsOneOrNull()

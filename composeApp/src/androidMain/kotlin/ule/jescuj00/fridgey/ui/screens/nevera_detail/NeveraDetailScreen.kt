@@ -32,8 +32,10 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -111,9 +113,18 @@ fun NeveraDetailScreen(
     var pendingDelete by remember { mutableStateOf<Producto?>(null) }
     var selectedCategory by remember { mutableStateOf<Categoria?>(null) }
     var showCompartir by remember { mutableStateOf(false) }
+    var showMiembros by remember { mutableStateOf(false) }
+    var showConfirmarBorrado by remember { mutableStateOf(false) }
+    var pendingExpulsar by remember { mutableStateOf<Usuario?>(null) }
 
     LaunchedEffect(neveraId, currentUserId) {
         viewModel.loadProducts(neveraId, currentUserId)
+    }
+
+    // Borrado o salida completados: la nevera ya no existe en este
+    // dispositivo → volver a "Mis neveras".
+    LaunchedEffect(state.neveraCerrada) {
+        if (state.neveraCerrada) onNavigateBack()
     }
 
     val showEmpty = !state.isLoading && state.error == null && state.productos.isEmpty()
@@ -131,8 +142,9 @@ fun NeveraDetailScreen(
                     miembros = state.miembros,
                     emptyVariant = false,
                     onBack = onNavigateBack,
-                    mostrarCompartir = state.esPropietario,
+                    mostrarCompartir = true,
                     onCompartir = { showCompartir = true },
+                    onMiembros = { showMiembros = true },
                 )
                 Box(Modifier.fillMaxSize(), Alignment.Center) {
                     Text(state.error!!, color = Rust)
@@ -145,8 +157,9 @@ fun NeveraDetailScreen(
                     miembros = state.miembros,
                     emptyVariant = true,
                     onBack = onNavigateBack,
-                    mostrarCompartir = state.esPropietario,
+                    mostrarCompartir = true,
                     onCompartir = { showCompartir = true },
+                    onMiembros = { showMiembros = true },
                 )
                 EmptyDetail(onScan = onNavigateToScan, onManual = onNavigateToAddProducto)
             }
@@ -157,8 +170,9 @@ fun NeveraDetailScreen(
                 onSelectCategory = { selectedCategory = it },
                 onBack = onNavigateBack,
                 onLongPressDelete = { pendingDelete = it },
-                mostrarCompartir = state.esPropietario,
+                mostrarCompartir = true,
                 onCompartir = { showCompartir = true },
+                onMiembros = { showMiembros = true },
             )
         }
 
@@ -212,24 +226,86 @@ fun NeveraDetailScreen(
             },
             onDejarDeCompartir = viewModel::dejarDeCompartir,
             onQuitar = viewModel::quitarDeMiCuenta,
+            onVerMiembros = {
+                showCompartir = false
+                showMiembros = true
+            },
+            onBorrarOSalir = {
+                showCompartir = false
+                showConfirmarBorrado = true
+            },
+        )
+    }
+
+    if (showConfirmarBorrado) {
+        ConfirmarBorradoDialog(
+            state = state,
+            onDismiss = {
+                showConfirmarBorrado = false
+                viewModel.limpiarErrorBorrado()
+            },
+            onConfirmar = viewModel::borrarOSalir,
+        )
+    }
+
+    if (showMiembros) {
+        MiembrosSheet(
+            state = state,
+            currentUserId = currentUserId,
+            onDismiss = {
+                showMiembros = false
+                viewModel.limpiarErrorMiembros()
+            },
+            onExpulsar = { pendingExpulsar = it },
+            onSalir = {
+                showMiembros = false
+                showConfirmarBorrado = true
+            },
+        )
+    }
+
+    // Confirmación de expulsión (dueño): destructiva y afecta a otra persona.
+    pendingExpulsar?.let { usuario ->
+        AlertDialog(
+            onDismissRequest = { pendingExpulsar = null },
+            title = { Text("Expulsar a ${usuario.nombre.ifEmpty { "esta persona" }}") },
+            text = {
+                Text(
+                    "Dejará de ver esta nevera y sus productos en sus dispositivos. " +
+                        "Podrá volver si la invitas de nuevo."
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    viewModel.expulsarColaborador(usuario.id)
+                    pendingExpulsar = null
+                }) { Text("Expulsar", color = Rust) }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingExpulsar = null }) { Text("Cancelar") }
+            },
         )
     }
 }
 
 /**
- * Diálogo del propietario para gestionar los dos ejes (nube + colaboración).
- * El contenido se decide con un `when` exhaustivo sobre [ModoNevera] y, dentro
- * de SYNCED, según el derivado `tieneColaboradores`:
- *  - LOCAL → confirmación de "Guardar en mi cuenta" (SubirANube; síncrona →
- *    spinner; el timeout vive en el use case).
- *  - SYNCED sin colaboradores → "Invitar con código" + "Quitar de mi cuenta".
- *  - SYNCED con colaboradores → "Invitar con código" + "Dejar de compartir"
- *    + "Quitar de mi cuenta".
+ * Diálogo de opciones de la nevera.
+ *
+ * GATING ESTRICTO por rol DENTRO del diálogo (no solo en si se muestra):
+ *  - COLABORADOR → rama propia con SOLO info + "Ver miembros" + "Salir de la
+ *    nevera". NUNCA invitar / dejar de compartir / quitar de cuenta / borrar.
+ *  - PROPIETARIO → `when` exhaustivo sobre [ModoNevera] y, dentro de SYNCED,
+ *    según el derivado `tieneColaboradores`:
+ *     - LOCAL → confirmación de "Guardar en mi cuenta" + "Borrar nevera".
+ *     - SYNCED sin colaboradores → "Invitar con código" + "Quitar de mi
+ *       cuenta" + "Borrar nevera".
+ *     - SYNCED con colaboradores → + "Ver miembros" + "Dejar de compartir".
  *
  * El diálogo permanece abierto durante las transiciones (spinner en línea) y
  * se re-renderiza al cambiar el estado: tras "Guardar" pasa a las opciones de
  * nube; tras "Quitar" vuelve a "Guardar"; tras "Dejar de compartir"
- * desaparece esa acción.
+ * desaparece esa acción. "Borrar nevera" / "Salir de la nevera" NO ejecutan
+ * directamente: abren el diálogo de confirmación con el aviso dinámico.
  */
 @Composable
 private fun CompartirDialog(
@@ -239,7 +315,39 @@ private fun CompartirDialog(
     onInvitar: () -> Unit,
     onDejarDeCompartir: () -> Unit,
     onQuitar: () -> Unit,
+    onVerMiembros: () -> Unit,
+    onBorrarOSalir: () -> Unit,
 ) {
+    if (!state.esPropietario) {
+        AlertDialog(
+            onDismissRequest = onDismiss,
+            title = { Text("Nevera compartida") },
+            text = {
+                Column {
+                    Text(
+                        "Esta nevera es de otra persona y se sincroniza " +
+                            "contigo en la nube."
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    DialogAction(
+                        label = "Ver miembros",
+                        color = Ink,
+                        onClick = onVerMiembros,
+                    )
+                    DialogAction(
+                        label = "Salir de la nevera",
+                        color = Rust,
+                        onClick = onBorrarOSalir,
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = onDismiss) { Text("Cancelar") }
+            },
+        )
+        return
+    }
+
     when (state.modo) {
         // --- LOCAL: confirmación de "Guardar en mi cuenta" ---
         ModoNevera.LOCAL -> AlertDialog(
@@ -262,6 +370,13 @@ private fun CompartirDialog(
                             fontSize = 13.sp,
                         ),
                         color = InkMuted,
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    DialogAction(
+                        label = "Borrar nevera",
+                        color = Rust,
+                        enabled = !state.guardando,
+                        onClick = onBorrarOSalir,
                     )
                     state.errorCompartir?.let { error ->
                         Spacer(Modifier.height(10.dp))
@@ -310,6 +425,16 @@ private fun CompartirDialog(
                         enabled = !state.dejandoDeCompartir && !state.quitando,
                         onClick = onInvitar,
                     )
+                    // "Ver miembros" solo con colaboradores: es la entrada a
+                    // la hoja cuando los avatares no se ven (nevera vacía).
+                    if (state.tieneColaboradores) {
+                        DialogAction(
+                            label = "Ver miembros",
+                            color = Ink,
+                            enabled = !state.dejandoDeCompartir && !state.quitando,
+                            onClick = onVerMiembros,
+                        )
+                    }
                     // "Dejar de compartir" solo cuando hay colaboradores (eje
                     // derivado): vacía colaboradores pero sigue en la nube.
                     if (state.tieneColaboradores) {
@@ -327,6 +452,12 @@ private fun CompartirDialog(
                         loading = state.quitando,
                         enabled = !state.dejandoDeCompartir,
                         onClick = onQuitar,
+                    )
+                    DialogAction(
+                        label = "Borrar nevera",
+                        color = Rust,
+                        enabled = !state.dejandoDeCompartir && !state.quitando,
+                        onClick = onBorrarOSalir,
                     )
 
                     state.errorCompartir?.let { error ->
@@ -370,6 +501,245 @@ private fun DialogAction(
     }
 }
 
+// MARK: - Borrar / salir / miembros (gestión de miembros)
+
+/**
+ * Confirmación de "Borrar nevera" (dueño) / "Salir de la nevera"
+ * (colaborador) con el AVISO DINÁMICO de los 4 casos. El texto se arma con un
+ * `when` exhaustivo sobre [ModoNevera] + `tieneColaboradores`; el caso 3
+ * menciona a las N personas afectadas con plural dinámico.
+ */
+@Composable
+private fun ConfirmarBorradoDialog(
+    state: NeveraDetailUiState,
+    onDismiss: () -> Unit,
+    onConfirmar: () -> Unit,
+) {
+    val nombre = state.neveraNombre.ifEmpty { "esta nevera" }
+    val titulo: String
+    val mensaje: String
+    val accion: String
+    if (state.esPropietario) {
+        titulo = "Borrar nevera"
+        accion = "Borrar"
+        val base = "¿Seguro que quieres borrar \"$nombre\"? Se eliminarán " +
+            "todos sus productos. Esta acción no se puede deshacer."
+        mensaje = when (state.modo) {
+            // Caso 1: solo este dispositivo — aviso mínimo, sin nube ni gente.
+            ModoNevera.LOCAL -> base
+            ModoNevera.SYNCED -> if (state.tieneColaboradores) {
+                // Caso 3: aviso FUERTE — afecta a las N personas que comparten.
+                val n = state.miembros.count { it.id != state.idPropietario }
+                base + if (n == 1) {
+                    " También se borrará para la persona que la comparte " +
+                        "contigo: dejará de verla en sus dispositivos."
+                } else {
+                    " También se borrará para las $n personas que la " +
+                        "comparten contigo: dejarán de verla en sus dispositivos."
+                }
+            } else {
+                // Caso 2: en la cuenta, sin colaboradores.
+                base + " También se quitará de tu cuenta y dejará de verse " +
+                    "en tus otros dispositivos."
+            }
+        }
+    } else {
+        // Caso 4: el colaborador SALE — no borra nada para los demás.
+        titulo = "Salir de la nevera"
+        accion = "Salir"
+        mensaje = "Dejarás de ver \"$nombre\" y sus productos en este " +
+            "dispositivo. La nevera seguirá disponible para las demás " +
+            "personas; solo dejarás de verla tú."
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(titulo) },
+        text = {
+            Column {
+                Text(mensaje)
+                state.errorBorrado?.let { error ->
+                    Spacer(Modifier.height(10.dp))
+                    Text(error, color = Rust)
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onConfirmar, enabled = !state.borrandoOSaliendo) {
+                if (state.borrandoOSaliendo) {
+                    CircularProgressIndicator(
+                        color = Rust, strokeWidth = 2.dp,
+                        modifier = Modifier.size(16.dp),
+                    )
+                    Spacer(Modifier.width(8.dp))
+                }
+                Text(accion, color = Rust)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss, enabled = !state.borrandoOSaliendo) {
+                Text("Cancelar")
+            }
+        },
+    )
+}
+
+/** Acción disponible en una fila de la hoja de miembros. */
+private enum class AccionMiembro { EXPULSAR, SALIR, NINGUNA }
+
+/**
+ * Hoja "Miembros": lista de perfiles denormalizados (avatar + nombre) con
+ * etiquetas "Propietario" / "Tú".
+ *
+ * GATING ESTRICTO por rol DENTRO de la lista: el dueño ve "Expulsar" en cada
+ * colaborador (nunca en sí mismo); el colaborador ve "Salir" SOLO en su
+ * propia fila y NUNCA acciones sobre otros.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun MiembrosSheet(
+    state: NeveraDetailUiState,
+    currentUserId: String,
+    onDismiss: () -> Unit,
+    onExpulsar: (Usuario) -> Unit,
+    onSalir: () -> Unit,
+) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        containerColor = Cream,
+    ) {
+        Column(Modifier.padding(horizontal = 22.dp)) {
+            Text(
+                text = "Miembros",
+                style = TextStyle(
+                    fontFamily = InstrumentSerif, fontSize = 26.sp,
+                    letterSpacing = (-0.4).sp,
+                ),
+                color = Ink,
+            )
+            Spacer(Modifier.height(2.dp))
+            Text(
+                text = "Las personas con acceso a esta nevera.",
+                style = TextStyle(fontFamily = Inter, fontSize = 13.sp),
+                color = InkMuted,
+            )
+            Spacer(Modifier.height(12.dp))
+            state.miembros.forEachIndexed { index, miembro ->
+                MiembroRow(
+                    usuario = miembro,
+                    avatarColor = avatarColors[index % avatarColors.size],
+                    esDueno = miembro.id == state.idPropietario,
+                    esYo = miembro.id == currentUserId,
+                    accion = when {
+                        // Dueño → expulsa a cualquier colaborador, no a sí mismo.
+                        state.esPropietario && miembro.id != state.idPropietario ->
+                            AccionMiembro.EXPULSAR
+                        // Colaborador → sale él mismo; nada sobre los demás.
+                        !state.esPropietario && miembro.id == currentUserId ->
+                            AccionMiembro.SALIR
+                        else -> AccionMiembro.NINGUNA
+                    },
+                    expulsando = state.expulsandoUid == miembro.id,
+                    onExpulsar = { onExpulsar(miembro) },
+                    onSalir = onSalir,
+                )
+            }
+            state.errorMiembros?.let { error ->
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    text = error,
+                    style = TextStyle(fontFamily = Inter, fontSize = 13.sp),
+                    color = Rust,
+                )
+            }
+            Spacer(Modifier.height(16.dp).navigationBarsPadding())
+        }
+    }
+}
+
+@Composable
+private fun MiembroRow(
+    usuario: Usuario,
+    avatarColor: Color,
+    esDueno: Boolean,
+    esYo: Boolean,
+    accion: AccionMiembro,
+    expulsando: Boolean,
+    onExpulsar: () -> Unit,
+    onSalir: () -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            modifier = Modifier.size(36.dp).clip(CircleShape).background(avatarColor),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                text = initialOf(usuario.nombre),
+                style = TextStyle(fontFamily = Inter, fontWeight = FontWeight.SemiBold, fontSize = 14.sp),
+                color = Paper,
+            )
+        }
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text(
+                text = usuario.nombre.ifEmpty { "Sin nombre" },
+                style = TextStyle(fontFamily = Inter, fontWeight = FontWeight.Medium, fontSize = 15.sp),
+                color = Ink,
+            )
+            if (esDueno || esYo) {
+                Spacer(Modifier.height(3.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    if (esDueno) MiembroChip("Propietario")
+                    if (esYo) MiembroChip("Tú")
+                }
+            }
+        }
+        when (accion) {
+            AccionMiembro.EXPULSAR -> TextButton(onClick = onExpulsar, enabled = !expulsando) {
+                if (expulsando) {
+                    CircularProgressIndicator(
+                        color = Rust, strokeWidth = 2.dp,
+                        modifier = Modifier.size(14.dp),
+                    )
+                    Spacer(Modifier.width(6.dp))
+                }
+                Text(
+                    text = "Expulsar",
+                    style = TextStyle(fontFamily = Inter, fontWeight = FontWeight.SemiBold, fontSize = 13.sp),
+                    color = Rust,
+                )
+            }
+
+            AccionMiembro.SALIR -> TextButton(onClick = onSalir) {
+                Text(
+                    text = "Salir",
+                    style = TextStyle(fontFamily = Inter, fontWeight = FontWeight.SemiBold, fontSize = 13.sp),
+                    color = Rust,
+                )
+            }
+
+            AccionMiembro.NINGUNA -> Unit
+        }
+    }
+}
+
+@Composable
+private fun MiembroChip(label: String) {
+    Text(
+        text = label,
+        style = TextStyle(fontFamily = Inter, fontWeight = FontWeight.Medium, fontSize = 11.sp),
+        color = InkSoft,
+        modifier = Modifier
+            .clip(RoundedCornerShape(8.dp))
+            .background(MintTint)
+            .border(1.dp, Hairline, RoundedCornerShape(8.dp))
+            .padding(horizontal = 7.dp, vertical = 2.dp),
+    )
+}
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun DetailContent(
@@ -380,6 +750,7 @@ private fun DetailContent(
     onLongPressDelete: (Producto) -> Unit,
     mostrarCompartir: Boolean,
     onCompartir: () -> Unit,
+    onMiembros: () -> Unit,
 ) {
     val filtered = remember(state.productos, selectedCategory) {
         if (selectedCategory == null) state.productos
@@ -405,6 +776,7 @@ private fun DetailContent(
                 onBack = onBack,
                 mostrarCompartir = mostrarCompartir,
                 onCompartir = onCompartir,
+                onMiembros = onMiembros,
             )
         }
         item {
@@ -494,6 +866,7 @@ private fun DetailHeader(
     onBack: () -> Unit,
     mostrarCompartir: Boolean = false,
     onCompartir: () -> Unit = {},
+    onMiembros: () -> Unit = {},
 ) {
     Row(
         modifier = Modifier
@@ -511,9 +884,19 @@ private fun DetailHeader(
             Text(text = nombre, style = NameStyle, color = Ink)
         }
         if (!emptyVariant) {
-            DetailAvatars(miembros)
+            // Tocable → hoja "Miembros" (con la nevera vacía, la entrada es
+            // la acción "Ver miembros" del diálogo de opciones).
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(12.dp))
+                    .clickable(onClick = onMiembros)
+                    .padding(2.dp),
+            ) {
+                DetailAvatars(miembros)
+            }
         }
-        // Compartir (UC-03): solo el propietario gestiona la compartición.
+        // Opciones de la nevera: el dueño gestiona compartición/borrado; el
+        // colaborador puede ver miembros y salir.
         if (mostrarCompartir) {
             Spacer(Modifier.width(8.dp))
             SquareIconButton(onClick = onCompartir) {

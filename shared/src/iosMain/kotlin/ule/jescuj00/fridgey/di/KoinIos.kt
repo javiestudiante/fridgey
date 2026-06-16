@@ -19,12 +19,15 @@ import ule.jescuj00.fridgey.domain.model.auth.AuthState
 import ule.jescuj00.fridgey.domain.scanner.BarcodeScanner
 import ule.jescuj00.fridgey.domain.usecase.AceptarInvitacionUseCase
 import ule.jescuj00.fridgey.domain.usecase.AddColaboradorUseCase
+import ule.jescuj00.fridgey.domain.usecase.BorrarNeveraUseCase
 import ule.jescuj00.fridgey.domain.usecase.CreateNeveraUseCase
 import ule.jescuj00.fridgey.domain.usecase.DejarDeCompartirUseCase
+import ule.jescuj00.fridgey.domain.usecase.ExpulsarColaboradorUseCase
 import ule.jescuj00.fridgey.domain.usecase.GenerarInvitacionUseCase
 import ule.jescuj00.fridgey.domain.usecase.LookupProductByBarcodeUseCase
 import ule.jescuj00.fridgey.domain.usecase.QuitarDeNubeUseCase
 import ule.jescuj00.fridgey.domain.usecase.RemoveColaboradorUseCase
+import ule.jescuj00.fridgey.domain.usecase.SalirDeNeveraUseCase
 import ule.jescuj00.fridgey.domain.usecase.ScanExpirationDateUseCase
 import ule.jescuj00.fridgey.domain.usecase.SubirANubeUseCase
 import ule.jescuj00.fridgey.domain.usecase.auth.ObserveAuthStateUseCase
@@ -69,6 +72,11 @@ fun getQuitarDeNubeUseCase(): QuitarDeNubeUseCase = KoinAccessor.get()
 fun getDejarDeCompartirUseCase(): DejarDeCompartirUseCase = KoinAccessor.get()
 fun getGenerarInvitacionUseCase(): GenerarInvitacionUseCase = KoinAccessor.get()
 fun getAceptarInvitacionUseCase(): AceptarInvitacionUseCase = KoinAccessor.get()
+
+// --- Gestión de miembros (borrar/salir/expulsar) ---
+fun getBorrarNeveraUseCase(): BorrarNeveraUseCase = KoinAccessor.get()
+fun getSalirDeNeveraUseCase(): SalirDeNeveraUseCase = KoinAccessor.get()
+fun getExpulsarColaboradorUseCase(): ExpulsarColaboradorUseCase = KoinAccessor.get()
 
 // --- Auth use cases ---
 fun getSignInWithGoogleUseCase(): SignInWithGoogleUseCase = KoinAccessor.get()

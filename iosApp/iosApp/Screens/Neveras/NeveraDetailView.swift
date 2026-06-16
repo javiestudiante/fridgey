@@ -16,6 +16,8 @@ struct NeveraDetailView: View {
     @State private var selectedCategory: Categoria?
     @State private var showCompartir = false
     @State private var navInvitar = false
+    @State private var showMiembros = false
+    @State private var showConfirmarBorrado = false
 
     init(neveraId: String, currentUserId: String) {
         self.neveraId = neveraId
@@ -79,6 +81,27 @@ struct NeveraDetailView: View {
                message: { Text(viewModel.state.error ?? "") })
         // --- Nube + colaboración (paridad con el diálogo Android) ---
         .overlay { compartirDialogOverlay }
+        .overlay { confirmarBorradoOverlay }
+        .sheet(isPresented: $showMiembros, onDismiss: { viewModel.limpiarErrorMiembros() }) {
+            MiembrosSheet(
+                viewModel: viewModel,
+                currentUserId: currentUserId,
+                onSalir: {
+                    showMiembros = false
+                    showConfirmarBorrado = true
+                }
+            )
+            .presentationDetents([.medium, .large])
+        }
+        // Borrado o salida completados: la nevera ya no existe en este
+        // dispositivo → volver a "Mis neveras".
+        .onChange(of: viewModel.state.neveraCerrada) { _, cerrada in
+            if cerrada {
+                showConfirmarBorrado = false
+                showMiembros = false
+                dismiss()
+            }
+        }
         .navigationDestination(isPresented: $navInvitar) {
             InvitarView(neveraId: neveraId, currentUserId: currentUserId)
         }
@@ -93,11 +116,15 @@ struct NeveraDetailView: View {
         viewModel.limpiarErrorCompartir()
     }
 
-    /// Diálogo del propietario para gestionar los dos ejes. El contenido se
-    /// decide con un `switch` EXHAUSTIVO sobre [ModoNeveraUI] y, dentro de
-    /// SYNCED, según el derivado `tieneColaboradores`. Permanece abierto
-    /// durante las transiciones (spinner en línea) y se re-renderiza al
-    /// cambiar el estado — igual que el AlertDialog de Android.
+    /// Diálogo de opciones de la nevera.
+    ///
+    /// GATING ESTRICTO por rol DENTRO del diálogo (no solo en si se muestra):
+    /// el COLABORADOR tiene su rama propia ([dialogColaborador]) con SOLO info
+    /// + "Ver miembros" + "Salir de la nevera" — nunca acciones del dueño. El
+    /// PROPIETARIO mantiene el `switch` EXHAUSTIVO sobre [ModoNeveraUI] y,
+    /// dentro de SYNCED, según el derivado `tieneColaboradores`. Permanece
+    /// abierto durante las transiciones (spinner en línea) y se re-renderiza
+    /// al cambiar el estado — igual que el AlertDialog de Android.
     @ViewBuilder
     private var compartirDialogOverlay: some View {
         if showCompartir {
@@ -106,11 +133,15 @@ struct NeveraDetailView: View {
                     .onTapGesture { dismissCompartir() }
 
                 VStack(alignment: .leading, spacing: 0) {
-                    switch viewModel.state.modo {
-                    case .local:
-                        dialogLocal
-                    case .synced:
-                        dialogSynced
+                    if !viewModel.state.esPropietario {
+                        dialogColaborador
+                    } else {
+                        switch viewModel.state.modo {
+                        case .local:
+                            dialogLocal
+                        case .synced:
+                            dialogSynced
+                        }
                     }
                 }
                 .padding(22)
@@ -119,6 +150,38 @@ struct NeveraDetailView: View {
                 .overlay(RoundedRectangle(cornerRadius: 20)
                     .stroke(Color.fridgeyHairline, lineWidth: 1))
                 .padding(.horizontal, 36)
+            }
+        }
+    }
+
+    /// COLABORADOR → SOLO info + "Ver miembros" + "Salir de la nevera".
+    /// Rama separada a propósito (no un `if` dentro del diálogo del dueño):
+    /// estructuralmente no puede mostrar invitar / dejar de compartir /
+    /// quitar de cuenta / borrar.
+    private var dialogColaborador: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text("Nevera compartida")
+                .font(.custom("Inter-Regular", size: 18).weight(.semibold))
+                .foregroundStyle(Color.fridgeyInk)
+            Spacer().frame(height: 12)
+            Text("Esta nevera es de otra persona y se sincroniza contigo en la nube.")
+                .font(.custom("Inter-Regular", size: 14))
+                .foregroundStyle(Color.fridgeyInkSoft)
+
+            errorCompartirText
+
+            Spacer().frame(height: 14)
+            dialogActionRow("Ver miembros", color: .fridgeyInk) {
+                showCompartir = false
+                showMiembros = true
+            }
+            dialogActionRow("Salir de la nevera", color: .fridgeyRust) {
+                showCompartir = false
+                showConfirmarBorrado = true
+            }
+            HStack {
+                Spacer()
+                dialogTextButton("Cancelar", color: .fridgeyInkSoft) { dismissCompartir() }
             }
         }
     }
@@ -141,6 +204,13 @@ struct NeveraDetailView: View {
                 .font(.custom("Inter-Regular", size: 13))
                 .italic()
                 .foregroundStyle(Color.fridgeyInkMuted)
+
+            Spacer().frame(height: 10)
+            dialogActionRow("Borrar nevera", color: .fridgeyRust) {
+                showCompartir = false
+                showConfirmarBorrado = true
+            }
+            .disabled(viewModel.state.guardando)
 
             errorCompartirText
 
@@ -180,6 +250,15 @@ struct NeveraDetailView: View {
                 showCompartir = false
                 navInvitar = true
             }
+            // "Ver miembros" solo con colaboradores: es la entrada a la hoja
+            // cuando los avatares no se ven (nevera vacía).
+            if viewModel.state.tieneColaboradores {
+                dialogActionRow("Ver miembros", color: .fridgeyInk) {
+                    showCompartir = false
+                    showMiembros = true
+                }
+                .disabled(viewModel.state.dejandoDeCompartir || viewModel.state.quitando)
+            }
             // "Dejar de compartir" solo con colaboradores (eje derivado).
             if viewModel.state.tieneColaboradores {
                 dialogActionRow("Dejar de compartir", color: .fridgeyInk,
@@ -191,6 +270,11 @@ struct NeveraDetailView: View {
                             loading: viewModel.state.quitando) {
                 viewModel.quitarDeMiCuenta()
             }
+            dialogActionRow("Borrar nevera", color: .fridgeyRust) {
+                showCompartir = false
+                showConfirmarBorrado = true
+            }
+            .disabled(viewModel.state.dejandoDeCompartir || viewModel.state.quitando)
             HStack {
                 Spacer()
                 dialogTextButton("Cancelar", color: .fridgeyInkSoft) { dismissCompartir() }
@@ -254,6 +338,103 @@ struct NeveraDetailView: View {
         }
         .buttonStyle(.plain)
         .disabled(loading)
+    }
+
+    // MARK: - Confirmación de borrar / salir (aviso dinámico, 4 casos)
+
+    private func dismissConfirmarBorrado() {
+        showConfirmarBorrado = false
+        viewModel.limpiarErrorBorrado()
+    }
+
+    private var confirmacionTitulo: String {
+        viewModel.state.esPropietario ? "Borrar nevera" : "Salir de la nevera"
+    }
+
+    private var confirmacionAccion: String {
+        viewModel.state.esPropietario ? "Borrar" : "Salir"
+    }
+
+    /// Texto del aviso, armado con un `switch` EXHAUSTIVO sobre [ModoNeveraUI]
+    /// + `tieneColaboradores` (mismos literales que Android):
+    ///  - C1 dueño LOCAL → aviso mínimo.
+    ///  - C2 dueño SYNCED sin colaboradores → + nube/otros dispositivos.
+    ///  - C3 dueño SYNCED con colaboradores → + las N personas afectadas
+    ///    (plural dinámico).
+    ///  - C4 colaborador → salir, no borra nada para los demás.
+    private var confirmacionMensaje: String {
+        let nombre = viewModel.state.neveraNombre.isEmpty
+            ? "esta nevera" : viewModel.state.neveraNombre
+        guard viewModel.state.esPropietario else {
+            return "Dejarás de ver \"\(nombre)\" y sus productos en este "
+                + "dispositivo. La nevera seguirá disponible para las demás "
+                + "personas; solo dejarás de verla tú."
+        }
+        let base = "¿Seguro que quieres borrar \"\(nombre)\"? Se eliminarán "
+            + "todos sus productos. Esta acción no se puede deshacer."
+        switch viewModel.state.modo {
+        case .local:
+            return base
+        case .synced:
+            if viewModel.state.tieneColaboradores {
+                let n = viewModel.state.miembros
+                    .filter { $0.id != viewModel.state.idPropietario }.count
+                return base + (n == 1
+                    ? " También se borrará para la persona que la comparte "
+                        + "contigo: dejará de verla en sus dispositivos."
+                    : " También se borrará para las \(n) personas que la "
+                        + "comparten contigo: dejarán de verla en sus dispositivos.")
+            } else {
+                return base + " También se quitará de tu cuenta y dejará de "
+                    + "verse en tus otros dispositivos."
+            }
+        }
+    }
+
+    /// Tarjeta custom (mismo lenguaje visual que el diálogo de compartir):
+    /// permanece abierta durante la operación con spinner en línea y muestra
+    /// el error recuperable dentro — igual que el AlertDialog de Android.
+    @ViewBuilder
+    private var confirmarBorradoOverlay: some View {
+        if showConfirmarBorrado {
+            ZStack {
+                Color.black.opacity(0.25).ignoresSafeArea()
+                    .onTapGesture { dismissConfirmarBorrado() }
+
+                VStack(alignment: .leading, spacing: 0) {
+                    Text(confirmacionTitulo)
+                        .font(.custom("Inter-Regular", size: 18).weight(.semibold))
+                        .foregroundStyle(Color.fridgeyInk)
+                    Spacer().frame(height: 12)
+                    Text(confirmacionMensaje)
+                        .font(.custom("Inter-Regular", size: 14))
+                        .foregroundStyle(Color.fridgeyInkSoft)
+                    if let error = viewModel.state.errorBorrado {
+                        Spacer().frame(height: 10)
+                        Text(error)
+                            .font(.custom("Inter-Regular", size: 13))
+                            .foregroundStyle(Color.fridgeyRust)
+                    }
+                    Spacer().frame(height: 18)
+                    HStack(spacing: 8) {
+                        Spacer()
+                        dialogTextButton("Cancelar", color: .fridgeyInkSoft) {
+                            dismissConfirmarBorrado()
+                        }
+                        dialogTextButton(confirmacionAccion, color: .fridgeyRust,
+                                         loading: viewModel.state.borrandoOSaliendo) {
+                            viewModel.borrarOSalir()
+                        }
+                    }
+                }
+                .padding(22)
+                .background(Color.fridgeySurfaceWhite,
+                            in: RoundedRectangle(cornerRadius: 20))
+                .overlay(RoundedRectangle(cornerRadius: 20)
+                    .stroke(Color.fridgeyHairline, lineWidth: 1))
+                .padding(.horizontal, 36)
+            }
+        }
     }
 
     // MARK: - Content (3 urgency shelves)
@@ -335,13 +516,17 @@ struct NeveraDetailView: View {
             }
             Spacer()
             if !emptyVariant {
-                detailAvatars
+                // Tocable → hoja "Miembros" (con la nevera vacía, la entrada
+                // es la acción "Ver miembros" del diálogo de opciones).
+                Button(action: { showMiembros = true }) {
+                    detailAvatars.padding(2)
+                }
+                .buttonStyle(.plain)
             }
-            // Compartir (UC-03): solo el propietario gestiona la compartición.
-            if viewModel.state.esPropietario {
-                squareButton(systemName: "square.and.arrow.up") { showCompartir = true }
-                    .padding(.leading, 8)
-            }
+            // Opciones de la nevera: el dueño gestiona compartición/borrado;
+            // el colaborador puede ver miembros y salir.
+            squareButton(systemName: "square.and.arrow.up") { showCompartir = true }
+                .padding(.leading, 8)
         }
         .padding(.horizontal, 16)
         .padding(.top, 8)
@@ -507,5 +692,163 @@ struct NeveraDetailView: View {
 
     private func cantidadLabel(_ c: Double, _ u: UnidadMedida) -> String {
         "\(String(format: "%g", c)) \(u.simbolo)"
+    }
+}
+
+// MARK: - Hoja "Miembros" (gestión de miembros)
+
+/// Acción disponible en una fila de la hoja de miembros (espejo del enum
+/// `AccionMiembro` de Android).
+private enum AccionMiembro {
+    case expulsar, salir, ninguna
+}
+
+/// Hoja "Miembros": lista de perfiles denormalizados (avatar + nombre) con
+/// chips "Propietario" / "Tú".
+///
+/// GATING ESTRICTO por rol DENTRO de la lista: el dueño ve "Expulsar" en
+/// cada colaborador (nunca en sí mismo); el colaborador ve "Salir" SOLO en
+/// su propia fila y NUNCA acciones sobre otros. La expulsión pide una
+/// confirmación ligera (destructiva y afecta a otra persona).
+private struct MiembrosSheet: View {
+
+    @ObservedObject var viewModel: NeveraDetailViewModel
+    let currentUserId: String
+    /// "Salir" desde la propia fila → cierra la hoja y abre la MISMA
+    /// confirmación C4 del diálogo de opciones.
+    let onSalir: () -> Void
+
+    @State private var pendingExpulsar: Usuario?
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 0) {
+                Text("Miembros")
+                    .font(.custom("InstrumentSerif-Regular", size: 26))
+                    .foregroundStyle(Color.fridgeyInk)
+                Spacer().frame(height: 2)
+                Text("Las personas con acceso a esta nevera.")
+                    .font(.custom("Inter-Regular", size: 13))
+                    .foregroundStyle(Color.fridgeyInkMuted)
+                Spacer().frame(height: 12)
+                ForEach(Array(viewModel.state.miembros.enumerated()), id: \.element.id) { idx, miembro in
+                    miembroRow(miembro, index: idx)
+                }
+                if let error = viewModel.state.errorMiembros {
+                    Spacer().frame(height: 6)
+                    Text(error)
+                        .font(.custom("Inter-Regular", size: 13))
+                        .foregroundStyle(Color.fridgeyRust)
+                }
+                Spacer().frame(height: 24)
+            }
+            .padding(.horizontal, 22)
+            .padding(.top, 24)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .background(Color.fridgeyCream)
+        // Confirmación de expulsión (dueño): destructiva y afecta a otra persona.
+        .alert(tituloExpulsar,
+               isPresented: Binding(get: { pendingExpulsar != nil },
+                                    set: { if !$0 { pendingExpulsar = nil } }),
+               presenting: pendingExpulsar) { usuario in
+            Button("Expulsar", role: .destructive) {
+                viewModel.expulsarColaborador(usuario.id)
+                pendingExpulsar = nil
+            }
+            Button("Cancelar", role: .cancel) { pendingExpulsar = nil }
+        } message: { _ in
+            Text("Dejará de ver esta nevera y sus productos en sus dispositivos. "
+                 + "Podrá volver si la invitas de nuevo.")
+        }
+    }
+
+    private var tituloExpulsar: String {
+        let nombre = pendingExpulsar?.nombre ?? ""
+        return "Expulsar a \(nombre.isEmpty ? "esta persona" : nombre)"
+    }
+
+    /// Mismo `when` de gating que Android, como función pura sobre el estado.
+    private func accion(para miembro: Usuario) -> AccionMiembro {
+        if viewModel.state.esPropietario && miembro.id != viewModel.state.idPropietario {
+            // Dueño → expulsa a cualquier colaborador, no a sí mismo.
+            return .expulsar
+        }
+        if !viewModel.state.esPropietario && miembro.id == currentUserId {
+            // Colaborador → sale él mismo; nada sobre los demás.
+            return .salir
+        }
+        return .ninguna
+    }
+
+    private func miembroRow(_ miembro: Usuario, index: Int) -> some View {
+        let palette: [Color] = [.fridgeyMint, .fridgeyMintDeep, .fridgeyAmber]
+        let esDueno = miembro.id == viewModel.state.idPropietario
+        let esYo = miembro.id == currentUserId
+        let expulsando = viewModel.state.expulsandoUid == miembro.id
+
+        return HStack(spacing: 12) {
+            Text(inicial(miembro.nombre))
+                .font(.custom("Inter-Regular", size: 14).weight(.semibold))
+                .foregroundStyle(Color.fridgeySurfaceWhite)
+                .frame(width: 36, height: 36)
+                .background(palette[index % palette.count], in: Circle())
+            VStack(alignment: .leading, spacing: 3) {
+                Text(miembro.nombre.isEmpty ? "Sin nombre" : miembro.nombre)
+                    .font(.custom("Inter-Regular", size: 15).weight(.medium))
+                    .foregroundStyle(Color.fridgeyInk)
+                if esDueno || esYo {
+                    HStack(spacing: 6) {
+                        if esDueno { chip("Propietario") }
+                        if esYo { chip("Tú") }
+                    }
+                }
+            }
+            Spacer()
+            switch accion(para: miembro) {
+            case .expulsar:
+                Button(action: { pendingExpulsar = miembro }) {
+                    HStack(spacing: 6) {
+                        if expulsando {
+                            ProgressView().tint(Color.fridgeyRust).controlSize(.small)
+                        }
+                        Text("Expulsar")
+                            .font(.custom("Inter-Regular", size: 13).weight(.semibold))
+                            .foregroundStyle(Color.fridgeyRust)
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .disabled(expulsando)
+
+            case .salir:
+                Button(action: onSalir) {
+                    Text("Salir")
+                        .font(.custom("Inter-Regular", size: 13).weight(.semibold))
+                        .foregroundStyle(Color.fridgeyRust)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+
+            case .ninguna:
+                EmptyView()
+            }
+        }
+        .padding(.vertical, 8)
+    }
+
+    private func chip(_ label: String) -> some View {
+        Text(label)
+            .font(.custom("Inter-Regular", size: 11).weight(.medium))
+            .foregroundStyle(Color.fridgeyInkSoft)
+            .padding(.horizontal, 7)
+            .padding(.vertical, 2)
+            .background(Color.fridgeyMintTint, in: RoundedRectangle(cornerRadius: 8))
+            .overlay(RoundedRectangle(cornerRadius: 8)
+                .stroke(Color.fridgeyHairline, lineWidth: 1))
+    }
+
+    private func inicial(_ nombre: String) -> String {
+        String(nombre.trimmingCharacters(in: .whitespaces).prefix(1)).uppercased()
     }
 }

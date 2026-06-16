@@ -63,8 +63,13 @@ class DejarDeCompartirUseCase(
                 )
                 try {
                     // AWAIT: la expulsión debe constar en el servidor. El doc
-                    // NO se borra — solo se vacía `colaboradores`/`miembros`.
-                    remoteRepository.quitarColaboradores(neveraId, ownerMiembro)
+                    // NO se borra — solo se vacía `colaboradores`/`miembros`
+                    // (caso "vaciar" del motor genérico actualizarMiembros).
+                    remoteRepository.actualizarMiembros(
+                        neveraId = neveraId,
+                        colaboradores = emptyList(),
+                        miembros = listOf(ownerMiembro),
+                    )
                     // Consistencia local inmediata; el listener vivo re-confirma.
                     neveraRepository.vaciarColaboradoresLocal(neveraId)
                     OperationResult.Success(Unit)

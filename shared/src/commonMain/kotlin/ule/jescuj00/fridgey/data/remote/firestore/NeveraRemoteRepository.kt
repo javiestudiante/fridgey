@@ -111,25 +111,41 @@ class NeveraRemoteRepository(private val firestore: FirebaseFirestore) {
     }
 
     /**
-     * Empties the collaborator set (DejarDeCompartirUseCase): the fridge STAYS
-     * in the cloud (the doc is NOT deleted), only `colaboradores` is cleared
-     * and `miembros` is reduced to the owner. Field-level update so the rest of
-     * the doc (nombre, fechaCreacion) is untouched; the new server timestamp
-     * lets every member's listener converge. Owner-only by the deployed rules.
+     * Rewrites the membership arrays (`colaboradores` + `miembros`) of a
+     * fridge that STAYS in the cloud (the doc is NOT deleted). This is the
+     * single engine behind every "remove member(s)" operation:
+     *  - DejarDeCompartirUseCase → empty list + owner-only `miembros`;
+     *  - SalirDeNeveraUseCase   → current arrays minus the leaver's own uid
+     *    (allowed to a non-owner by the esAutoSalidaValida rule);
+     *  - ExpulsarColaboradorUseCase → current arrays minus the expelled uid
+     *    (owner-only full update rights).
      *
-     * The expelled collaborators lose access on their own devices: once they
-     * leave `colaboradores`, their per-fridge listener hits PERMISSION_DENIED.
+     * Field-level update so the rest of the doc (nombre, fechaCreacion) is
+     * untouched; the new server timestamp lets every member's listener
+     * converge. Whole-array writes on purpose — arrayRemove on `miembros`
+     * would require exact equality of the denormalized map (fragile), and the
+     * self-leave rule validates the full diff anyway.
+     *
+     * Members removed from `colaboradores` lose access on their own devices:
+     * their per-fridge listener hits PERMISSION_DENIED.
+     *
+     * The miembros travel as plain maps (same rationale as
+     * [aceptarInvitacion]: identical wire shape on both platforms).
      */
-    suspend fun quitarColaboradores(neveraId: String, owner: MiembroDoc) {
+    suspend fun actualizarMiembros(
+        neveraId: String,
+        colaboradores: List<String>,
+        miembros: List<MiembroDoc>,
+    ) {
         neveraRef(neveraId).update(
-            "colaboradores" to emptyList<String>(),
-            "miembros" to listOf(
+            "colaboradores" to colaboradores,
+            "miembros" to miembros.map { miembro ->
                 mapOf(
-                    "uid" to owner.uid,
-                    "nombre" to owner.nombre,
-                    "fotoUrl" to owner.fotoUrl,
+                    "uid" to miembro.uid,
+                    "nombre" to miembro.nombre,
+                    "fotoUrl" to miembro.fotoUrl,
                 )
-            ),
+            },
             "updatedAt" to FieldValue.serverTimestamp,
         )
     }

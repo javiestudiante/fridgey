@@ -29,6 +29,19 @@ final class NeveraDetailViewModel: ObservableObject {
         /// "Quitar de mi cuenta" (SYNCED→LOCAL) en curso.
         var quitando: Bool = false
         var errorCompartir: String? = nil
+        // --- borrar / salir / expulsar (gestión de miembros) ---
+        /// uid del propietario — distingue su fila en la hoja de miembros.
+        var idPropietario: String = ""
+        /// "Borrar nevera" (dueño) o "Salir de la nevera" (colaborador) en curso.
+        var borrandoOSaliendo: Bool = false
+        /// Error del diálogo de confirmación de borrar/salir.
+        var errorBorrado: String? = nil
+        /// La nevera ya no existe en este dispositivo (borrada o salida): volver atrás.
+        var neveraCerrada: Bool = false
+        /// uid del colaborador cuya expulsión está en curso (spinner por fila).
+        var expulsandoUid: String? = nil
+        /// Error de la hoja de miembros (expulsión fallida).
+        var errorMiembros: String? = nil
     }
 
     @Published var state = State()
@@ -42,6 +55,9 @@ final class NeveraDetailViewModel: ObservableObject {
     private let subirANubeUseCase = KoinIosKt.getSubirANubeUseCase()
     private let dejarDeCompartirUseCase = KoinIosKt.getDejarDeCompartirUseCase()
     private let quitarDeNubeUseCase = KoinIosKt.getQuitarDeNubeUseCase()
+    private let borrarNeveraUseCase = KoinIosKt.getBorrarNeveraUseCase()
+    private let salirDeNeveraUseCase = KoinIosKt.getSalirDeNeveraUseCase()
+    private let expulsarColaboradorUseCase = KoinIosKt.getExpulsarColaboradorUseCase()
 
     /// Tope de las transiciones que NO se autolimitan dentro del use case
     /// (dejar de compartir, quitar de la cuenta). Espejo del
@@ -114,6 +130,7 @@ final class NeveraDetailViewModel: ObservableObject {
                 }
                 self.state.neveraNombre = nevera?.nombre ?? ""
                 self.state.esPropietario = nevera?.esPropietario ?? false
+                self.state.idPropietario = nevera?.idPropietario ?? ""
                 self.state.modo = nevera.map { ModoNeveraUI($0.modo) } ?? .local
             }
         }
@@ -197,6 +214,85 @@ final class NeveraDetailViewModel: ObservableObject {
 
     func limpiarErrorCompartir() {
         state.errorCompartir = nil
+    }
+
+    // MARK: - Borrar / salir / expulsar (gestión de miembros)
+
+    /// Acción del diálogo de confirmación: el DUEÑO borra la nevera (casos
+    /// 1-3, mismo use case — el aviso dinámico es de UI) o el COLABORADOR
+    /// sale de ella (caso 4). Síncrona contra servidor en los casos con nube
+    /// → spinner + timeout (los use cases reanudan el sync con NonCancellable
+    /// si el timeout cancela). Con éxito se marca `neveraCerrada` y la vista
+    /// vuelve a "Mis neveras".
+    func borrarOSalir() {
+        guard !state.borrandoOSaliendo else { return }  // guard anti doble-tap
+        state.borrandoOSaliendo = true
+        state.errorBorrado = nil
+        let esPropietario = state.esPropietario
+        Task { @MainActor [weak self] in
+            guard let self = self else { return }
+            let result = await Self.raceWithTimeout(seconds: Self.transitionTimeoutSeconds) {
+                if esPropietario {
+                    return try? await self.borrarNeveraUseCase.invoke(
+                        neveraId: self.neveraId,
+                        requesterId: self.currentUserId
+                    )
+                } else {
+                    return try? await self.salirDeNeveraUseCase.invoke(
+                        neveraId: self.neveraId,
+                        requesterId: self.currentUserId
+                    )
+                }
+            }
+            if result is OperationResultSuccess<KotlinUnit> {
+                self.state.neveraCerrada = true
+            } else if let failure = result as? OperationResultError {
+                self.state.errorBorrado = failure.message
+            } else {
+                let accion = esPropietario ? "borrar la nevera" : "salir de la nevera"
+                self.state.errorBorrado = "Sin conexión con el servidor. "
+                    + "Para \(accion) necesitas conexión; inténtalo de nuevo."
+            }
+            self.state.borrandoOSaliendo = false
+        }
+    }
+
+    func limpiarErrorBorrado() {
+        state.errorBorrado = nil
+    }
+
+    /// El DUEÑO expulsa a un colaborador concreto desde la hoja de miembros.
+    /// Spinner por fila vía `expulsandoUid`; la hoja sigue abierta y se
+    /// refresca con el conjunto resultante.
+    func expulsarColaborador(_ colaboradorId: String) {
+        guard state.expulsandoUid == nil else { return }  // una expulsión a la vez
+        state.expulsandoUid = colaboradorId
+        state.errorMiembros = nil
+        Task { @MainActor [weak self] in
+            guard let self = self else { return }
+            let result = await Self.raceWithTimeout(seconds: Self.transitionTimeoutSeconds) {
+                try? await self.expulsarColaboradorUseCase.invoke(
+                    neveraId: self.neveraId,
+                    requesterId: self.currentUserId,
+                    colaboradorId: colaboradorId
+                )
+            }
+            if result is OperationResultSuccess<KotlinUnit> {
+                // Re-lee miembros + tieneColaboradores (lista y avatares).
+                self.loadNeveraName()
+                self.loadMiembros()
+            } else if let failure = result as? OperationResultError {
+                self.state.errorMiembros = failure.message
+            } else {
+                self.state.errorMiembros = "Sin conexión con el servidor. "
+                    + "Para expulsar necesitas conexión; inténtalo de nuevo."
+            }
+            self.state.expulsandoUid = nil
+        }
+    }
+
+    func limpiarErrorMiembros() {
+        state.errorMiembros = nil
     }
 
     private func aplicarResultadoCompartir(_ result: OperationResult<KotlinUnit>?) {

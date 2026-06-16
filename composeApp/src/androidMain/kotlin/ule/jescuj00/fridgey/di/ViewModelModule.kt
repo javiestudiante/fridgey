@@ -21,8 +21,9 @@ fun viewModelModule(): Module = module {
     // get() resolves CreateNeveraUseCase + SubirANubeUseCase
     viewModel { CreateNeveraViewModel(get(), get()) }
     // get() resolves ProductoRepository, NeveraRepository, SubirANube /
-    // DejarDeCompartir / QuitarDeNube use cases (por tipo)
-    viewModel { NeveraDetailViewModel(get(), get(), get(), get(), get()) }
+    // DejarDeCompartir / QuitarDeNube / BorrarNevera / SalirDeNevera /
+    // ExpulsarColaborador use cases (por tipo)
+    viewModel { NeveraDetailViewModel(get(), get(), get(), get(), get(), get(), get(), get()) }
     viewModel { AddProductoViewModel(get()) }
     viewModel { LoginViewModel(get()) }
     viewModel { InvitarViewModel(get()) }

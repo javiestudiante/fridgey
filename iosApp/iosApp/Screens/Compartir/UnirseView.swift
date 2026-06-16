@@ -45,6 +45,9 @@ struct UnirseView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.fridgeyCream.ignoresSafeArea())
         .navigationBarHidden(true)
+        // La barra oculta desactiva el swipe-back nativo; lo reactivamos sin
+        // quitar la flecha custom (ambas vías de volver conviven).
+        .enableSwipeBack()
         .navigationDestination(item: $destinoNevera) { destino in
             NeveraDetailView(neveraId: destino.id, currentUserId: currentUserId)
         }

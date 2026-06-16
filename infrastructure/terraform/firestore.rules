@@ -77,11 +77,43 @@ service cloud.firestore {
           request.resource.data.miembros.size() == resource.data.miembros.size() + 1;
       }
 
+      // Self-leave: the mirror image of esAutoUnionValida. A collaborator
+      // leaving the fridge must remove themselves from the doc
+      // (`colaboradores` + their denormalized `miembros` entry), which the
+      // owner-only update rule would block. This function allows exactly
+      // that mutation and nothing else:
+      //   - esAutoUnionValida: uid NOT in colaboradores before, IS after,
+      //     arrays GROW by exactly one (new hasAll old).
+      //   - esAutoSalidaValida: uid IS in colaboradores before, NOT after,
+      //     arrays SHRINK by exactly one (old hasAll new) — so nobody else
+      //     can be added or removed in the same write.
+      //
+      // Known limitation (same accepted risk as esAutoUnionValida): we only
+      // validate the SIZE of `miembros`, not which entry was removed — a
+      // malicious collaborator could drop someone else's profile entry while
+      // keeping their own. They still lose read access (their uid leaves
+      // `colaboradores`), so the damage is cosmetic and self-healing on the
+      // owner's next miembros write. To be revisited with the shape TODO.
+      function esAutoSalidaValida() {
+        return request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['colaboradores', 'miembros', 'updatedAt']) &&
+          // Currently a collaborator, and gone after the update
+          request.auth.uid in resource.data.colaboradores &&
+          !(request.auth.uid in request.resource.data.colaboradores) &&
+          // Nobody is added, and exactly one uid (theirs) is removed
+          resource.data.colaboradores.hasAll(request.resource.data.colaboradores) &&
+          request.resource.data.colaboradores.size() == resource.data.colaboradores.size() - 1 &&
+          // Their denormalized profile entry is removed (content NOT validated)
+          request.resource.data.miembros.size() == resource.data.miembros.size() - 1;
+      }
+
       allow update: if request.auth != null && (
         // (a) the owner keeps full update rights, as before
         resource.data.idPropietario == request.auth.uid ||
         // (b) a non-owner may only add themselves (invite acceptance)
-        esAutoUnionValida()
+        esAutoUnionValida() ||
+        // (c) a non-owner may only remove themselves (self-leave)
+        esAutoSalidaValida()
       );
 
       allow delete: if request.auth != null &&

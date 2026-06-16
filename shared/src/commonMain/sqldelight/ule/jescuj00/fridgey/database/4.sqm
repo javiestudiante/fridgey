@@ -1,0 +1,22 @@
+-- Migration: schema version 4 -> 5
+--
+-- Fase 1 de avisos de caducidad (LOCAL ONLY, sin sync):
+--   * `fecha_caducidad_ultimo_aviso` en Producto: dedup del aviso local. Guarda
+--     la fecha_caducidad para la que ya se mostró una notificación (epoch
+--     seconds, medianoche UTC, igual que fecha_caducidad). NULLABLE, sin DEFAULT
+--     ni backfill: NULL = nunca avisado. LOCAL ONLY — excluir del mapper de
+--     Firestore (Fase 2).
+--   * Tabla `Preferencia`: almacén clave/valor local para ajustes del
+--     dispositivo (p. ej. el toggle "avisos_caducidad"). LOCAL ONLY, nunca se
+--     sincroniza con Firestore.
+--
+-- Como en 2.sqm, ambos son ALTER/CREATE simples (sin rebuild de tabla). SQLite
+-- añade la columna al FINAL de Producto, por lo que el orden coincide con
+-- Producto.sq, donde `fecha_caducidad_ultimo_aviso` se declara como última
+-- columna (tras `updated_at`, antes de la FOREIGN KEY).
+ALTER TABLE Producto ADD COLUMN fecha_caducidad_ultimo_aviso INTEGER;
+
+CREATE TABLE Preferencia (
+    clave TEXT NOT NULL PRIMARY KEY,
+    valor TEXT NOT NULL
+);

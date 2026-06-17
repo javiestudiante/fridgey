@@ -21,6 +21,7 @@ import ule.jescuj00.fridgey.database.ProductoQueries
 import ule.jescuj00.fridgey.domain.model.Categoria
 import ule.jescuj00.fridgey.domain.model.ModoNevera
 import ule.jescuj00.fridgey.domain.model.Producto
+import ule.jescuj00.fridgey.domain.model.ProductoParaAviso
 import ule.jescuj00.fridgey.domain.model.UnidadMedida
 
 class ProductoRepository(
@@ -201,6 +202,42 @@ class ProductoRepository(
     suspend fun eliminarProductoLocal(productoId: String): Unit =
         withContext(Dispatchers.Default) {
             queries.deleteById(productoId)
+        }
+
+    // --- Avisos de caducidad (LOCAL, Fase 1) ---
+
+    /**
+     * Snapshot one-shot de TODOS los productos locales como [ProductoParaAviso],
+     * para el barrido de avisos de caducidad. Sin filtro por usuario: incluye
+     * neveras LOCAL y funciona offline / sin cuenta (los datos locales persisten
+     * tras logout). El dedup nullable se mapea a `LocalDate?` con la misma
+     * conversión UTC que el resto de fechas.
+     */
+    suspend fun getProductosParaAviso(): List<ProductoParaAviso> =
+        withContext(Dispatchers.Default) {
+            queries.selectAllParaAviso().executeAsList().map { row ->
+                ProductoParaAviso(
+                    productId = row.id,
+                    neveraId = row.id_nevera,
+                    nombreProducto = row.nombre,
+                    fechaCaducidad = row.fecha_caducidad.toLocalDate(),
+                    diasAvisoAntes = row.dias_aviso_antes.toInt(),
+                    fechaCaducidadUltimoAviso = row.fecha_caducidad_ultimo_aviso?.toLocalDate(),
+                )
+            }
+        }
+
+    /**
+     * Marca un producto como ya avisado para [fechaCaducidad]: la convierte a
+     * epoch UTC-midnight (misma base que `fecha_caducidad`) y escribe SÓLO la
+     * columna de dedup (no toca `updated_at`).
+     */
+    suspend fun marcarAvisado(productId: String, fechaCaducidad: LocalDate): Unit =
+        withContext(Dispatchers.Default) {
+            queries.marcarAvisado(
+                fecha_caducidad_ultimo_aviso = fechaCaducidad.toEpochSeconds(),
+                id = productId,
+            )
         }
 
     // --- Date conversion helpers ---

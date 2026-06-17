@@ -12,6 +12,7 @@ import org.koin.dsl.module
 import ule.jescuj00.fridgey.data.remote.firestore.NeveraRemoteRepository
 import ule.jescuj00.fridgey.data.repository.AuthRepository
 import ule.jescuj00.fridgey.data.repository.NeveraRepository
+import ule.jescuj00.fridgey.data.repository.PreferenciasRepository
 import ule.jescuj00.fridgey.data.repository.ProductoRepository
 import ule.jescuj00.fridgey.data.repository.UsuarioRepository
 import ule.jescuj00.fridgey.data.sync.SyncManager
@@ -54,6 +55,9 @@ val repositoryModule: Module = module {
         )
     }
     single { AuthRepository(auth = Firebase.auth, usuarioRepository = get()) }
+
+    // LOCAL key/value store (toggle "Avisos de caducidad", Fase 1). No sync.
+    single { PreferenciasRepository(get()) }
 
     single { SyncManager(get(), get(), get()) }
 }

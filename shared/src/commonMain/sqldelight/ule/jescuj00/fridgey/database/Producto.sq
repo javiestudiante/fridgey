@@ -101,3 +101,20 @@ updateFromRemote:
 UPDATE Producto
 SET codigo_barras = ?, nombre = ?, categoria = ?, fecha_caducidad = ?, fecha_registro = ?, imagen_url = ?, cantidad = ?, dias_aviso_antes = ?, unidad = ?, updated_at = ?
 WHERE id = ?;
+
+-- TODOS los productos locales con sólo las columnas necesarias para construir
+-- un ProductoParaAviso (barrido de avisos de caducidad, HITO 3). SIN filtro por
+-- usuario a propósito: los avisos deben funcionar offline y sin cuenta, neveras
+-- LOCAL incluidas. fecha_caducidad_ultimo_aviso es nullable (NULL = nunca avisado).
+selectAllParaAviso:
+SELECT id, id_nevera, nombre, fecha_caducidad, dias_aviso_antes, fecha_caducidad_ultimo_aviso
+FROM Producto;
+
+-- Writeback de dedup del aviso: fija SÓLO fecha_caducidad_ultimo_aviso. NO toca
+-- updated_at deliberadamente — es estado LOCAL; arrastrar updated_at haría que en
+-- Fase 2 el SyncManager viese el producto como modificado y generase escrituras
+-- espurias a Firestore.
+marcarAvisado:
+UPDATE Producto
+SET fecha_caducidad_ultimo_aviso = ?
+WHERE id = ?;

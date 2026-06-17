@@ -1,7 +1,16 @@
 -- Almacén clave/valor LOCAL para ajustes del dispositivo (p. ej. el toggle
 -- "avisos_caducidad"). LOCAL ONLY — nunca se sincroniza con Firestore.
--- Las queries (upsert / select por clave) se añaden en el HITO 2B.
 CREATE TABLE Preferencia (
     clave TEXT NOT NULL PRIMARY KEY,
     valor TEXT NOT NULL
 );
+
+-- Upsert: el SQLite del minSdk no soporta ON CONFLICT DO UPDATE, pero como la
+-- tabla no tiene FKs entrantes ni triggers, INSERT OR REPLACE es seguro aquí
+-- (no dispara cascadas ni resetea columnas: sólo hay clave + valor).
+upsert:
+INSERT OR REPLACE INTO Preferencia (clave, valor)
+VALUES (?, ?);
+
+selectByClave:
+SELECT valor FROM Preferencia WHERE clave = ?;

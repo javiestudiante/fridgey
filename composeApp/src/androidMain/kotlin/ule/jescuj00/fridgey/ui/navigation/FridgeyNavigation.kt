@@ -35,7 +35,10 @@ import ule.jescuj00.fridgey.ui.screens.nevera_list.NeveraListScreen
 import ule.jescuj00.fridgey.ui.screens.unirse.UnirseScreen
 
 @Composable
-fun FridgeyNavigation() {
+fun FridgeyNavigation(
+    deepLinkNeveraId: String? = null,
+    onDeepLinkConsumed: () -> Unit = {},
+) {
     val observeAuthStateUseCase: ObserveAuthStateUseCase = koinInject()
     val signOutUseCase: SignOutUseCase = koinInject()
 
@@ -56,7 +59,11 @@ fun FridgeyNavigation() {
         is AuthState.Authenticated -> {
             AuthenticatedGraph(
                 currentUserId = state.user.uid,
-                signOutUseCase = signOutUseCase
+                signOutUseCase = signOutUseCase,
+                // El deep-link sólo se resuelve autenticado: si el tap llega sin
+                // sesión, queda pendiente hasta que se entra en este grafo.
+                deepLinkNeveraId = deepLinkNeveraId,
+                onDeepLinkConsumed = onDeepLinkConsumed,
             )
         }
     }
@@ -84,13 +91,24 @@ private fun UnauthenticatedGraph() {
 @Composable
 private fun AuthenticatedGraph(
     currentUserId: String,
-    signOutUseCase: SignOutUseCase
+    signOutUseCase: SignOutUseCase,
+    deepLinkNeveraId: String? = null,
+    onDeepLinkConsumed: () -> Unit = {},
 ) {
     val navController = rememberNavController()
     val coroutineScope = rememberCoroutineScope()
 
     val onSignOut: () -> Unit = {
         coroutineScope.launch { signOutUseCase() }
+    }
+
+    // Deep-link de notificación: navega UNA vez al detalle de la nevera y avisa
+    // al Activity para que limpie el pendiente (rotar/recomponer no re-navega
+    // porque la key vuelve a null tras consumirlo).
+    LaunchedEffect(deepLinkNeveraId) {
+        val neveraId = deepLinkNeveraId ?: return@LaunchedEffect
+        navController.navigate(Screen.NeveraDetail.createRoute(neveraId))
+        onDeepLinkConsumed()
     }
 
     NavHost(navController = navController, startDestination = Screen.NeveraList.route) {

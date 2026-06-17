@@ -17,6 +17,7 @@ import ule.jescuj00.fridgey.di.authBridgeModule
 import ule.jescuj00.fridgey.di.sharedModules
 import ule.jescuj00.fridgey.di.viewModelModule
 import ule.jescuj00.fridgey.domain.model.auth.AuthState
+import ule.jescuj00.fridgey.notificaciones.CanalCaducidad
 
 class FridgeyApplication : Application() {
 
@@ -29,6 +30,9 @@ class FridgeyApplication : Application() {
         // misconfigured.
         FirebaseApp.initializeApp(this)
         Log.d("Fridgey", "Firebase initialized: ${FirebaseApp.getInstance().name}")
+
+        // Canal de notificación de avisos de caducidad (idempotente).
+        CanalCaducidad.crear(this)
 
         val koinApp = startKoin {
             androidLogger()

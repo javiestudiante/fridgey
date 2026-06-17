@@ -19,4 +19,5 @@ val databaseModule: Module = module {
     single { get<FoodSaverDatabase>().neveraColaboradorQueries }
     single { get<FoodSaverDatabase>().productoQueries }
     single { get<FoodSaverDatabase>().productoCacheQueries }
+    single { get<FoodSaverDatabase>().preferenciaQueries }
 }

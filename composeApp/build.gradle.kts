@@ -51,6 +51,8 @@ kotlin {
             // declared here too rather than promoted to `api` in shared,
             // which would leak ML Kit into commonMain consumers.
             implementation(libs.mlkit.text.recognition)
+            // WorkManager — barrido diario/one-time de avisos de caducidad (Fase 1).
+            implementation(libs.androidx.work.runtime.ktx)
         }
         commonMain.dependencies {
             implementation(libs.compose.runtime)

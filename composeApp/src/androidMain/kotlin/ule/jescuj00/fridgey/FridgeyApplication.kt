@@ -14,9 +14,11 @@ import ule.jescuj00.fridgey.data.sync.SyncManager
 import ule.jescuj00.fridgey.di.SYNC_SCOPE_QUALIFIER
 import ule.jescuj00.fridgey.di.androidModule
 import ule.jescuj00.fridgey.di.authBridgeModule
+import ule.jescuj00.fridgey.di.notificationModule
 import ule.jescuj00.fridgey.di.sharedModules
 import ule.jescuj00.fridgey.di.viewModelModule
 import ule.jescuj00.fridgey.domain.model.auth.AuthState
+import ule.jescuj00.fridgey.domain.notification.NotificacionCaducidadScheduler
 import ule.jescuj00.fridgey.notificaciones.CanalCaducidad
 
 class FridgeyApplication : Application() {
@@ -37,7 +39,7 @@ class FridgeyApplication : Application() {
         val koinApp = startKoin {
             androidLogger()
             androidContext(this@FridgeyApplication)
-            modules(sharedModules() + androidModule() + authBridgeModule() + viewModelModule())
+            modules(sharedModules() + androidModule() + authBridgeModule() + viewModelModule() + notificationModule())
         }
 
         // El sync se engancha al ciclo de auth: login arranca el descubrimiento
@@ -57,5 +59,13 @@ class FridgeyApplication : Application() {
                 }
             }
         }
+
+        // Motor de avisos de caducidad (Fase 1, Android). Funciona sin la UI del
+        // toggle (HITO 4): por defecto está ON. programarComprobacionDiaria deja
+        // el periódico (KEEP) y comprobarAhora lanza un barrido inmediato para no
+        // esperar al ciclo diario tras abrir la app o editar una fecha.
+        val scheduler = koin.get<NotificacionCaducidadScheduler>()
+        scheduler.programarComprobacionDiaria()
+        scheduler.comprobarAhora()
     }
 }

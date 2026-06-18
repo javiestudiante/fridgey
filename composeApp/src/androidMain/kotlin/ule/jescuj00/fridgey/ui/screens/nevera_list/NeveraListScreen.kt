@@ -1,5 +1,9 @@
 package ule.jescuj00.fridgey.ui.screens.nevera_list
 
+import android.Manifest
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -24,7 +28,7 @@ import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.GroupAdd
 import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.outlined.Notifications
+import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -46,6 +50,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -55,8 +60,11 @@ import kotlinx.datetime.Clock
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.todayIn
 import org.koin.androidx.compose.koinViewModel
+import org.koin.compose.koinInject
+import ule.jescuj00.fridgey.data.repository.PreferenciasRepository
 import ule.jescuj00.fridgey.domain.model.ExpiringTodaySummary
 import ule.jescuj00.fridgey.domain.model.NeveraResumen
+import ule.jescuj00.fridgey.notificaciones.tienePermisoNotificaciones
 import ule.jescuj00.fridgey.ui.components.AlertCard
 import ule.jescuj00.fridgey.ui.components.NeveraCard
 import ule.jescuj00.fridgey.ui.components.NeveraRole
@@ -92,11 +100,16 @@ fun NeveraListScreen(
     onNavigateToCreate: () -> Unit,
     onNavigateToNevera: (String) -> Unit,
     onNavigateToUnirse: () -> Unit,
+    onNavigateToAjustes: () -> Unit,
     onSignOut: () -> Unit,
     viewModel: NeveraListViewModel = koinViewModel()
 ) {
     val state by viewModel.uiState.collectAsState()
     var showFabSheet by remember { mutableStateOf(false) }
+
+    // Petición contextual del permiso de notificaciones en la primera entrada
+    // a la home (solo API 33+; ver doc del composable).
+    PrimerUsoPermisoAvisos()
 
     LaunchedEffect(currentUserId) {
         viewModel.observeNeveras(currentUserId)
@@ -116,13 +129,14 @@ fun NeveraListScreen(
             )
 
             state.neveras.isEmpty() -> Column(Modifier.fillMaxSize().statusBarsPadding()) {
-                HomeHeader(onSignOut = onSignOut)
+                HomeHeader(onSignOut = onSignOut, onNavigateToAjustes = onNavigateToAjustes)
                 EmptyState(onCreatePressed = onNavigateToCreate)
             }
 
             else -> HomeContent(
                 state = state,
                 onNavigateToNevera = onNavigateToNevera,
+                onNavigateToAjustes = onNavigateToAjustes,
                 onSignOut = onSignOut,
             )
         }
@@ -176,6 +190,34 @@ fun NeveraListScreen(
     }
 }
 
+/**
+ * Petición contextual de POST_NOTIFICATIONS en la primera entrada a la home.
+ * Solo API 33+ (en <33 se concede al instalar). Pide UNA vez: si los avisos
+ * están ON, falta el permiso y nunca se ha solicitado, lanza la petición y marca
+ * `permiso_notif_solicitado` (sea cual sea el resultado) para no re-preguntar en
+ * cada arranque. El resultado lo gestiona el Worker (mostrar() devuelve false si
+ * se deniega y reintenta cuando se conceda).
+ */
+@Composable
+private fun PrimerUsoPermisoAvisos() {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
+
+    val context = LocalContext.current
+    val preferencias: PreferenciasRepository = koinInject()
+    val launcher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission(),
+    ) { /* el resultado lo gestiona el Worker; aquí no actuamos */ }
+
+    LaunchedEffect(Unit) {
+        val avisosOn = preferencias.avisosCaducidadActivados()
+        val yaSolicitado = preferencias.permisoNotifSolicitado()
+        if (avisosOn && !yaSolicitado && !tienePermisoNotificaciones(context)) {
+            launcher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            preferencias.setPermisoNotifSolicitado(true)
+        }
+    }
+}
+
 /** Fila de opción del bottom sheet del FAB: icono en círculo mint + título
  *  (Inter medium) + subtítulo atenuado. */
 @Composable
@@ -221,6 +263,7 @@ private fun FabOption(
 private fun HomeContent(
     state: NeveraListUiState,
     onNavigateToNevera: (String) -> Unit,
+    onNavigateToAjustes: () -> Unit,
     onSignOut: () -> Unit,
 ) {
     LazyColumn(
@@ -228,7 +271,7 @@ private fun HomeContent(
             .fillMaxSize()
             .statusBarsPadding(),
     ) {
-        item { HomeHeader(onSignOut = onSignOut) }
+        item { HomeHeader(onSignOut = onSignOut, onNavigateToAjustes = onNavigateToAjustes) }
 
         // Cross-fridge "caducan hoy" banner — only when there's something today.
         state.expiringToday?.takeIf { it.total > 0 }?.let { summary ->
@@ -274,7 +317,7 @@ private fun HomeContent(
 }
 
 @Composable
-private fun HomeHeader(onSignOut: () -> Unit) {
+private fun HomeHeader(onSignOut: () -> Unit, onNavigateToAjustes: () -> Unit) {
     val eyebrow = remember { todayEyebrow() }
     Row(
         modifier = Modifier
@@ -288,15 +331,15 @@ private fun HomeHeader(onSignOut: () -> Unit) {
             Text(text = "Mis neveras", style = TitleStyle, color = Ink)
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
-            // Sign-out lives in an honest overflow menu (the bell is
-            // decorative — notifications are not a feature yet, and the
-            // design's account/"Yo" tab is out of scope this session).
+            // Sign-out lives in an honest overflow menu. El icono de ajustes
+            // (antes una campana decorativa) abre la pantalla de Ajustes, hogar
+            // del toggle de avisos de caducidad.
             OverflowMenu(onSignOut = onSignOut)
             Spacer(Modifier.width(8.dp))
             CircleHeaderButton(
-                icon = Icons.Outlined.Notifications,
-                contentDescription = "Notificaciones",
-                onClick = { /* decorativa — sin feature de notificaciones */ },
+                icon = Icons.Outlined.Settings,
+                contentDescription = "Ajustes",
+                onClick = onNavigateToAjustes,
             )
         }
     }

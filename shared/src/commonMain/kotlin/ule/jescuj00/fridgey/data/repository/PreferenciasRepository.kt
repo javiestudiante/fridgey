@@ -37,7 +37,27 @@ class PreferenciasRepository(
             )
         }
 
+    /**
+     * Si ya se ha solicitado alguna vez el permiso POST_NOTIFICATIONS (API 33+).
+     * **Default `false`** (clave ausente = nunca solicitado). Evita re-preguntar
+     * en cada arranque: `shouldShowRequestPermissionRationale` no distingue por
+     * sí solo "nunca pedido" de "denegado permanente".
+     */
+    suspend fun permisoNotifSolicitado(): Boolean = withContext(Dispatchers.Default) {
+        queries.selectByClave(CLAVE_PERMISO_NOTIF_SOLICITADO).executeAsOneOrNull() == "true"
+    }
+
+    /** Marca que el permiso de notificaciones ya se solicitó al menos una vez. */
+    suspend fun setPermisoNotifSolicitado(solicitado: Boolean): Unit =
+        withContext(Dispatchers.Default) {
+            queries.upsert(
+                clave = CLAVE_PERMISO_NOTIF_SOLICITADO,
+                valor = if (solicitado) "true" else "false",
+            )
+        }
+
     companion object {
         const val CLAVE_AVISOS_CADUCIDAD = "avisos_caducidad"
+        const val CLAVE_PERMISO_NOTIF_SOLICITADO = "permiso_notif_solicitado"
     }
 }

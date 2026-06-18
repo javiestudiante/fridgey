@@ -5,6 +5,7 @@ import org.koin.core.module.dsl.viewModel
 import org.koin.dsl.module
 import ule.jescuj00.fridgey.ui.scanner.DateScannerViewModel
 import ule.jescuj00.fridgey.ui.screens.add_producto.AddProductoViewModel
+import ule.jescuj00.fridgey.ui.screens.ajustes.AjustesViewModel
 import ule.jescuj00.fridgey.ui.screens.create_nevera.CreateNeveraViewModel
 import ule.jescuj00.fridgey.ui.screens.invitar.InvitarViewModel
 import ule.jescuj00.fridgey.ui.screens.login.LoginViewModel
@@ -30,4 +31,6 @@ fun viewModelModule(): Module = module {
     viewModel { UnirseViewModel(get()) }
     // get() resolves ScanExpirationDateUseCase, BarcodeScanner, LookupProductByBarcodeUseCase
     viewModel { DateScannerViewModel(get(), get(), get()) }
+    // get() resolves PreferenciasRepository + NotificacionCaducidadScheduler
+    viewModel { AjustesViewModel(get(), get()) }
 }

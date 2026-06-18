@@ -25,6 +25,9 @@ sealed class Screen(val route: String) {
 
     /** Flujo "Unirse con código" (entrada manual + escaneo QR). */
     data object Unirse : Screen("unirse")
+
+    /** Ajustes de la app (hoy: toggle de avisos de caducidad). */
+    data object Ajustes : Screen("ajustes")
 }
 
 /**

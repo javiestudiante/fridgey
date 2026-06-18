@@ -27,6 +27,7 @@ import ule.jescuj00.fridgey.domain.usecase.auth.SignOutUseCase
 import ule.jescuj00.fridgey.ui.scanner.DateScannerScreen
 import ule.jescuj00.fridgey.ui.screens.add_producto.AddProductoScreen
 import ule.jescuj00.fridgey.ui.screens.add_producto.AddProductoViewModel
+import ule.jescuj00.fridgey.ui.screens.ajustes.AjustesScreen
 import ule.jescuj00.fridgey.ui.screens.create_nevera.CreateNeveraScreen
 import ule.jescuj00.fridgey.ui.screens.invitar.InvitarScreen
 import ule.jescuj00.fridgey.ui.screens.login.LoginScreen
@@ -120,7 +121,14 @@ private fun AuthenticatedGraph(
                     navController.navigate(Screen.NeveraDetail.createRoute(neveraId))
                 },
                 onNavigateToUnirse = { navController.navigate(Screen.Unirse.route) },
+                onNavigateToAjustes = { navController.navigate(Screen.Ajustes.route) },
                 onSignOut = onSignOut
+            )
+        }
+
+        composable(Screen.Ajustes.route) {
+            AjustesScreen(
+                onNavigateBack = { navController.popBackStack() },
             )
         }
 

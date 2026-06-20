@@ -1,0 +1,179 @@
+% =============================================================================
+%  Fridgey — Diagramas de arquitectura para la memoria del TFG
+%  Generados a partir del estado real del repositorio.
+%
+%  REQUISITOS EN EL PREÁMBULO DE TU MEMORIA:
+%     \usepackage{tikz}
+%     \usetikzlibrary{positioning, arrows.meta, fit, backgrounds, calc}
+%
+%  USO:  \input{infrastructure/docs/arquitectura-tikz.tex}
+%        (cada diagrama está envuelto en su propio entorno figure)
+% =============================================================================
+
+% -----------------------------------------------------------------------------
+%  Paleta común (tonos sobrios para impresión)
+% -----------------------------------------------------------------------------
+\definecolor{fgPres}{HTML}{4C78A8}   % presentación
+\definecolor{fgDom}{HTML}{59A14F}    % dominio
+\definecolor{fgData}{HTML}{E1812C}   % datos
+\definecolor{fgPlat}{HTML}{9D7660}   % plataforma
+\definecolor{fgDI}{HTML}{8E7CC3}     % inyección de dependencias
+\definecolor{fgBg}{HTML}{F5F5F5}
+
+% =============================================================================
+%  FIGURA 1 — Arquitectura por capas (Clean Architecture)
+% =============================================================================
+\begin{figure}[htbp]
+  \centering
+  \begin{tikzpicture}[
+      font=\sffamily\small,
+      layer/.style={
+        rounded corners=3pt, draw=#1!70!black, fill=#1!12, line width=0.8pt,
+        text width=12.2cm, inner sep=8pt, align=center},
+      title/.style={font=\sffamily\bfseries},
+      comp/.style={
+        rounded corners=2pt, draw=#1!60!black, fill=white, line width=0.5pt,
+        font=\sffamily\scriptsize, inner sep=4pt, align=center, minimum height=8mm},
+      tag/.style={font=\sffamily\scriptsize\itshape, text=black!55},
+      dep/.style={-{Stealth[length=3mm]}, line width=1pt, draw=black!60},
+  ]
+
+  % ---- CAPA DE PRESENTACIÓN ----
+  \node[layer=fgPres] (pres) {
+    {\title\color{fgPres!60!black} CAPA DE PRESENTACIÓN}\quad{\tag :composeApp / androidMain}\\[4pt]
+    \begin{tikzpicture}[baseline]
+      \node[comp=fgPres] (a) {Screens (Compose)\\ \scriptsize NeveraList · AddProducto · Ajustes};
+      \node[comp=fgPres, right=3mm of a] (b) {ViewModels\\ \scriptsize AjustesVM · NeveraDetailVM};
+      \node[comp=fgPres, right=3mm of b] (c) {Navegación\\ \scriptsize FridgeyNavigation};
+      \node[comp=fgPres, right=3mm of c] (d) {Scanner UI\\ \scriptsize CameraX · ML Kit};
+    \end{tikzpicture}
+  };
+
+  % ---- CAPA DE DOMINIO ----
+  \node[layer=fgDom, below=10mm of pres] (dom) {
+    {\title\color{fgDom!55!black} CAPA DE DOMINIO}\quad{\tag :shared / commonMain — Kotlin puro, sin dependencias de plataforma}\\[4pt]
+    \begin{tikzpicture}[baseline]
+      \node[comp=fgDom] (a) {Modelos\\ \scriptsize Producto · AvisoCaducidad\\ \scriptsize Nevera · Usuario};
+      \node[comp=fgDom, right=3mm of a] (b) {Casos de uso (puros)\\ \scriptsize EvaluarAvisosCaducidad\\ \scriptsize PlanificarAvisos · CreateNevera};
+      \node[comp=fgDom, right=3mm of b] (c) {Interfaces (puertos)\\ \scriptsize NotificacionScheduler\\ \scriptsize NotificacionPoster};
+    \end{tikzpicture}
+  };
+
+  % ---- CAPA DE DATOS ----
+  \node[layer=fgData, below=10mm of dom] (data) {
+    {\title\color{fgData!60!black} CAPA DE DATOS}\quad{\tag :shared / commonMain}\\[4pt]
+    \begin{tikzpicture}[baseline]
+      \node[comp=fgData] (a) {Repositorios\\ \scriptsize ProductoRepository\\ \scriptsize PreferenciasRepository · NeveraRepository};
+      \node[comp=fgData, right=3mm of a] (b) {Persistencia local\\ \scriptsize SQLDelight\\ \scriptsize Producto.sq · Preferencia.sq};
+      \node[comp=fgData, right=3mm of b] (c) {Remoto\\ \scriptsize Firestore (GitLive)\\ \scriptsize OpenFoodFacts (Ktor)};
+    \end{tikzpicture}
+  };
+
+  % ---- CAPA DE PLATAFORMA ----
+  \node[layer=fgPlat, below=10mm of data] (plat) {
+    {\title\color{fgPlat!55!black} PLATAFORMA (actual/expect $\rightarrow$ implementa los puertos)}\quad{\tag androidMain / iosMain}\\[4pt]
+    \begin{tikzpicture}[baseline]
+      \node[comp=fgPlat] (a) {WorkManager\\ \scriptsize SchedulerAndroid\\ \scriptsize AvisosCaducidadWorker};
+      \node[comp=fgPlat, right=3mm of a] (b) {Notificaciones\\ \scriptsize PosterAndroid\\ \scriptsize NotificationManagerCompat};
+      \node[comp=fgPlat, right=3mm of b] (c) {DB Driver\\ \scriptsize DatabaseDriverFactory\\ \scriptsize SQLite / Native};
+      \node[comp=fgPlat, right=3mm of c] (d) {Servicios SO\\ \scriptsize ML Kit · CameraX\\ \scriptsize Credential Manager};
+    \end{tikzpicture}
+  };
+
+  % ---- Banda transversal: Inyección de dependencias ----
+  \begin{scope}[on background layer]
+    \node[rounded corners=3pt, fill=fgDI!15, draw=fgDI!60!black, line width=0.8pt,
+          fit=(pres)(plat), inner sep=3.5mm] (dibox) {};
+  \end{scope}
+  \node[rotate=90, anchor=south, font=\sffamily\bfseries\footnotesize, text=fgDI!50!black]
+        at ($(dibox.east)+(2.5mm,0)$) {Inyección de dependencias · Koin};
+
+  % ---- Flechas (regla de dependencias: todo apunta al dominio) ----
+  \draw[dep] (pres) -- node[right, tag, text=black!70] {depende de} (dom);
+  \draw[dep] (data) -- node[right, tag, text=black!70] {implementa contratos de} (dom);
+  \draw[dep] (plat) -- node[right, tag, text=black!70] {implementa puertos de} (data.south);
+
+  \end{tikzpicture}
+  \caption[Arquitectura por capas de Fridgey]{Arquitectura por capas de Fridgey (Clean Architecture sobre Kotlin
+  Multiplatform). Las dependencias apuntan siempre hacia el dominio, que permanece puro y libre de plataforma;
+  los casos de uso definen \emph{puertos} (interfaces) que la capa de plataforma implementa mediante el mecanismo
+  \texttt{expect/actual} de KMP. La inyección de dependencias (Koin) actúa de forma transversal a todas las capas.}
+  \label{fig:arquitectura-capas}
+\end{figure}
+
+% =============================================================================
+%  FIGURA 2 — Reparto de responsabilidades entre módulos Gradle
+% =============================================================================
+\begin{figure}[htbp]
+  \centering
+  \begin{tikzpicture}[
+      font=\sffamily\small,
+      mod/.style={rounded corners=4pt, draw=#1!70!black, fill=#1!10, line width=1pt,
+        text width=6.6cm, inner sep=7pt, align=center},
+      srcset/.style={rounded corners=2pt, draw=black!35, fill=white, line width=0.5pt,
+        text width=6.0cm, inner sep=5pt, align=left, font=\scriptsize},
+      ssth/.style={font=\sffamily\bfseries\scriptsize, text=black!70},
+      modth/.style={font=\sffamily\bfseries},
+      share/.style={-{Stealth[length=3mm]}, line width=1pt, draw=fgDom!55!black, dashed},
+  ]
+
+  % ---- Módulo :composeApp ----
+  \node[mod=fgPres] (app) {
+    {\modth\color{fgPres!55!black} :composeApp}\\[1pt]
+    {\scriptsize\itshape Aplicación Android — Jetpack Compose}\\[6pt]
+    \begin{tikzpicture}
+      \node[srcset] (am) {%
+        {\ssth androidMain}\\
+        $\bullet$ UI Compose: screens, componentes, tema\\
+        $\bullet$ ViewModels (Koin \texttt{viewModel})\\
+        $\bullet$ Navegación · Scanner (CameraX)\\
+        $\bullet$ DI Android: notificaciones, viewmodels\\
+        $\bullet$ MainActivity · \texttt{startKoin\{\}}};
+    \end{tikzpicture}
+  };
+
+  % ---- Módulo :shared ----
+  \node[mod=fgDom, right=14mm of app, anchor=north west, yshift=0pt] (shared) at ($(app.north east)+(14mm,0)$) {
+    {\modth\color{fgDom!50!black} :shared}\\[1pt]
+    {\scriptsize\itshape Núcleo multiplataforma (KMP)}\\[6pt]
+    \begin{tikzpicture}[node distance=3mm]
+      \node[srcset] (cm) {%
+        {\ssth commonMain}\\
+        $\bullet$ \textbf{domain}: modelos, casos de uso puros,\\
+        \hphantom{$\bullet$ }puertos (Scheduler, Poster)\\
+        $\bullet$ \textbf{data}: repositorios, SQLDelight,\\
+        \hphantom{$\bullet$ }Firestore, OpenFoodFacts\\
+        $\bullet$ \textbf{di}: módulos Koin comunes};
+      \node[srcset, below=3mm of cm] (anm) {%
+        {\ssth androidMain}\\
+        $\bullet$ DatabaseDriverFactory (SQLite)\\
+        $\bullet$ Scanner ML Kit · Auth Google/Apple};
+      \node[srcset, below=3mm of anm] (iom) {%
+        {\ssth iosMain}\\
+        $\bullet$ Driver nativo · puertos (Fase 1: stubs)};
+    \end{tikzpicture}
+  };
+
+  % ---- Dependencia entre módulos ----
+  \draw[share] ($(app.east)+(0,1.2)$) -- node[above, font=\scriptsize\sffamily, text=fgDom!45!black] {depende de}
+        ($(shared.west)+(0,1.2)$);
+
+  % ---- Plataformas destino ----
+  \node[rounded corners=2pt, draw=fgPlat!60!black, fill=fgPlat!10, font=\scriptsize\sffamily,
+        below=8mm of app, text width=6.6cm, align=center, inner sep=5pt]
+        (and) {Target \textbf{Android} (APK)};
+  \node[rounded corners=2pt, draw=fgPlat!60!black, fill=fgPlat!10, font=\scriptsize\sffamily,
+        below=8mm of shared, text width=6.8cm, align=center, inner sep=5pt]
+        (ios) {Targets \textbf{Android} + \textbf{iOS} (arm64 / simulador)};
+
+  \draw[-{Stealth[length=2.5mm]}, draw=black!45] (app) -- (and);
+  \draw[-{Stealth[length=2.5mm]}, draw=black!45] (shared) -- (ios);
+
+  \end{tikzpicture}
+  \caption[Reparto de responsabilidades entre módulos Gradle]{Reparto de responsabilidades entre los dos módulos
+  Gradle del proyecto. \texttt{:shared} concentra el dominio y los datos compartidos entre Android e iOS dentro de
+  \texttt{commonMain}, delegando lo específico de cada sistema a \texttt{androidMain}/\texttt{iosMain}.
+  \texttt{:composeApp} contiene exclusivamente la interfaz Android (Compose) y depende de \texttt{:shared}.
+  En la Fase~1 únicamente se materializa el \emph{target} Android de la UI; el núcleo ya es multiplataforma.}
+  \label{fig:arquitectura-modulos}
+\end{figure}

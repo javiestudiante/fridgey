@@ -6,6 +6,9 @@ import Shared
 @main
 struct iOSApp: App {
 
+    @Environment(\.scenePhase) private var scenePhase
+    @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
+
     init() {
         // Order matters:
         //   1. Firebase MUST be configured before any Firebase API call.
@@ -27,11 +30,25 @@ struct iOSApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
+                // Router para el tap de notificaciones (lo escribe AppDelegate,
+                // lo consume NeveraListView).
+                .environmentObject(AppRouter.shared)
                 // Google Sign-In falls back to the URL-scheme path if the
                 // user has the Google app installed; without this handler
                 // that flow hangs after picking the account.
                 .onOpenURL { url in
                     GIDSignIn.sharedInstance.handle(url)
+                }
+                // Avisos de caducidad (Fase 1b): reconciliar las notificaciones
+                // al abrir (.task) y al volver a primer plano (scenePhase .active).
+                // El tap → NeveraDetail y el toggle/permiso se wirean en el HITO 3.
+                .task {
+                    await AvisosCaducidadController.shared.reconciliar()
+                }
+                .onChange(of: scenePhase) { _, fase in
+                    if fase == .active {
+                        Task { await AvisosCaducidadController.shared.reconciliar() }
+                    }
                 }
         }
     }

@@ -12,6 +12,7 @@ import ule.jescuj00.fridgey.data.binders.NeveraListBinder
 import ule.jescuj00.fridgey.data.binders.ProductoListBinder
 import ule.jescuj00.fridgey.data.repository.AuthRepository
 import ule.jescuj00.fridgey.data.repository.NeveraRepository
+import ule.jescuj00.fridgey.data.repository.PreferenciasRepository
 import ule.jescuj00.fridgey.data.repository.ProductoRepository
 import ule.jescuj00.fridgey.data.repository.UsuarioRepository
 import ule.jescuj00.fridgey.data.sync.SyncManager
@@ -25,6 +26,7 @@ import ule.jescuj00.fridgey.domain.usecase.DejarDeCompartirUseCase
 import ule.jescuj00.fridgey.domain.usecase.ExpulsarColaboradorUseCase
 import ule.jescuj00.fridgey.domain.usecase.GenerarInvitacionUseCase
 import ule.jescuj00.fridgey.domain.usecase.LookupProductByBarcodeUseCase
+import ule.jescuj00.fridgey.domain.usecase.PlanificarAvisosCaducidadUseCase
 import ule.jescuj00.fridgey.domain.usecase.QuitarDeNubeUseCase
 import ule.jescuj00.fridgey.domain.usecase.RemoveColaboradorUseCase
 import ule.jescuj00.fridgey.domain.usecase.SalirDeNeveraUseCase
@@ -57,6 +59,7 @@ fun getUsuarioRepository(): UsuarioRepository = KoinAccessor.get()
 fun getNeveraRepository(): NeveraRepository = KoinAccessor.get()
 fun getProductoRepository(): ProductoRepository = KoinAccessor.get()
 fun getAuthRepository(): AuthRepository = KoinAccessor.get()
+fun getPreferenciasRepository(): PreferenciasRepository = KoinAccessor.get()
 
 // --- Use cases ---
 fun getCreateNeveraUseCase(): CreateNeveraUseCase = KoinAccessor.get()
@@ -65,6 +68,9 @@ fun getRemoveColaboradorUseCase(): RemoveColaboradorUseCase = KoinAccessor.get()
 fun getScanExpirationDateUseCase(): ScanExpirationDateUseCase = KoinAccessor.get()
 fun getBarcodeScanner(): BarcodeScanner = KoinAccessor.get()
 fun getLookupProductByBarcodeUseCase(): LookupProductByBarcodeUseCase = KoinAccessor.get()
+
+/** Planner puro de avisos de caducidad para iOS (programar por adelantado). */
+fun getPlanificadorAvisosCaducidad(): PlanificarAvisosCaducidadUseCase = KoinAccessor.get()
 
 // --- Neveras en la nube + colaboración ---
 fun getSubirANubeUseCase(): SubirANubeUseCase = KoinAccessor.get()

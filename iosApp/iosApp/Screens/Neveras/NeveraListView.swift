@@ -17,6 +17,10 @@ struct NeveraListView: View {
     @State private var activeSheet: ActiveSheet?
     @State private var pendingFabAction: FabAction?
 
+    @EnvironmentObject private var router: AppRouter
+    @State private var showAjustes = false
+    @State private var deepLink: NeveraDeepLink?
+
     private enum ActiveSheet: String, Identifiable {
         case fabChooser, create
         var id: String { rawValue }
@@ -59,6 +63,13 @@ struct NeveraListView: View {
             .navigationDestination(isPresented: $showUnirse) {
                 UnirseView(currentUserId: currentUserId)
             }
+            .navigationDestination(isPresented: $showAjustes) {
+                AjustesView()
+            }
+            // Deep-link del tap de una notificación: abre la NeveraDetail por id.
+            .navigationDestination(item: $deepLink) { dl in
+                NeveraDetailView(neveraId: dl.id, currentUserId: currentUserId)
+            }
             // Hoja única: selector del FAB o crear-nevera (ver nota arriba).
             .sheet(item: $activeSheet, onDismiss: {
                 // Al cerrarse el selector con una opción elegida, presenta la
@@ -96,6 +107,16 @@ struct NeveraListView: View {
                    message: { Text(viewModel.state.uploadWarning ?? "") })
             .onAppear { viewModel.start() }
             .onDisappear { viewModel.stop() }
+            // Permiso de notificaciones contextual (1ª aparición, gated por pref).
+            .task { await AvisosCaducidadController.shared.pedirPermisoContextualSiProcede() }
+            // Consume el neveraId pendiente del router (tap de notificación):
+            // cubre tanto el valor ya presente al aparecer como cambios después.
+            .task(id: router.neveraIdPendiente) {
+                if let id = router.neveraIdPendiente {
+                    deepLink = NeveraDeepLink(id: id)
+                    router.neveraIdPendiente = nil
+                }
+            }
         }
     }
 
@@ -159,11 +180,10 @@ struct NeveraListView: View {
             }
             Spacer()
             HStack(spacing: 8) {
-                // Sign-out lives in an honest overflow menu; the bell is
-                // decorative (notifications aren't a feature yet).
-                // "Unirse con código" se movió al bottom sheet del FAB; el
-                // menú "⋯" se queda solo con cerrar sesión (punto de entrada
-                // único al flujo de unirse).
+                // Sign-out vive en un menú "⋯"; el icono de ajustes (antes una
+                // campana decorativa) abre la pantalla de Ajustes, hogar del
+                // toggle de avisos de caducidad. "Unirse con código" se movió al
+                // bottom sheet del FAB.
                 Menu {
                     Button(role: .destructive, action: onSignOut) {
                         Label("Cerrar sesión", systemImage: "rectangle.portrait.and.arrow.right")
@@ -171,7 +191,10 @@ struct NeveraListView: View {
                 } label: {
                     circleIcon("ellipsis")
                 }
-                circleIcon("bell")
+                Button(action: { showAjustes = true }) {
+                    circleIcon("gearshape")
+                }
+                .buttonStyle(.plain)
             }
         }
         .padding(.horizontal, 20)
@@ -241,6 +264,12 @@ struct NeveraListView: View {
         let month = meses[(c.month ?? 1) - 1]
         return "HOY · \(day) \(month)"
     }
+}
+
+/// Envoltorio Identifiable para navegar a una NeveraDetail solo con el neveraId
+/// (el deep-link del tap no trae el objeto Nevera completo).
+private struct NeveraDeepLink: Identifiable, Hashable {
+    let id: String
 }
 
 // MARK: - Create sheet

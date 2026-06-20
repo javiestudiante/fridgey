@@ -16,6 +16,7 @@ import ule.jescuj00.fridgey.domain.usecase.GenerarInvitacionUseCase
 import ule.jescuj00.fridgey.domain.usecase.LookupProductByBarcodeUseCase
 import ule.jescuj00.fridgey.domain.usecase.MapOffCategoryUseCase
 import ule.jescuj00.fridgey.domain.usecase.ParseQuantityUseCase
+import ule.jescuj00.fridgey.domain.usecase.PlanificarAvisosCaducidadUseCase
 import ule.jescuj00.fridgey.domain.usecase.QuitarDeNubeUseCase
 import ule.jescuj00.fridgey.domain.usecase.RemoveColaboradorUseCase
 import ule.jescuj00.fridgey.domain.usecase.SalirDeNeveraUseCase
@@ -48,6 +49,8 @@ val useCaseModule: Module = module {
     factory { LookupProductByBarcodeUseCase(get()) }
     // Función pura (sin deps) del motor de avisos de caducidad (Fase 1).
     factory { EvaluarAvisosCaducidadUseCase() }
+    // Planner puro de avisos para iOS (programar por adelantado, Fase 1b).
+    factory { PlanificarAvisosCaducidadUseCase() }
 
     factory { SubirANubeUseCase(get(), get(), get(), get(), get(named(SYNC_SCOPE_QUALIFIER))) }
     factory { QuitarDeNubeUseCase(get(), get(), get()) }

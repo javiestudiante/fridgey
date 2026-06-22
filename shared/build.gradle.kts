@@ -52,6 +52,10 @@ kotlin {
         }
         androidMain.dependencies {
             implementation(libs.sqldelight.android.driver)
+            // Bundled modern SQLite (FTS5 + remove_diacritics 2) wired into the
+            // Android driver. Framework SQLite at minSdk 24 predates SQLite 3.27 and
+            // does not guarantee FTS5, which our product search now requires.
+            implementation(libs.bundled.sqlite.android)
             implementation(libs.mlkit.text.recognition)
             implementation(libs.mlkit.barcode.scanning)
             implementation(libs.ktor.client.okhttp)

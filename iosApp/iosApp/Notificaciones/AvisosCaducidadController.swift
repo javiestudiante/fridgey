@@ -61,6 +61,7 @@ final class AvisosCaducidadController {
         // 1. Gate por preferencia (default ON ante ausencia/fallo de lectura).
         let activado = (try? await preferenciasRepository.avisosCaducidadActivados())?.boolValue ?? true
         guard activado else {
+            NSLog("%@", "[AVISOS] gate: preferencia OFF -> cancel pending, no programa")
             center.removeAllPendingNotificationRequests()
             return
         }
@@ -70,6 +71,7 @@ final class AvisosCaducidadController {
         let autorizado = settings.authorizationStatus == .authorized
             || settings.authorizationStatus == .provisional
         guard autorizado else {
+            NSLog("%@", "[AVISOS] gate: sin permiso (status=\(settings.authorizationStatus.rawValue)) -> cancel pending")
             center.removeAllPendingNotificationRequests()
             return
         }
@@ -78,6 +80,7 @@ final class AvisosCaducidadController {
         guard let productos = try? await productoRepository.getProductosParaAviso() else { return }
         let hoy = AvisosFechaBridgeKt.hoyLocalDate()
         let plan = planner.invoke(productos: productos, hoy: hoy, limite: Self.limite)
+        NSLog("%@", "[AVISOS] reconcile: hoy=\(hoy) futuros=\(plan.futuros.count) inmediatos=\(plan.inmediatos.count)")
 
         // 4. Cancel-all + reschedule de los futuros (programados por adelantado).
         center.removeAllPendingNotificationRequests()
@@ -89,6 +92,7 @@ final class AvisosCaducidadController {
                 trigger: triggerCalendario(en: aviso.fechaDisparo)
             )
             try? await center.add(req)
+            NSLog("%@", "[AVISOS] futuro programado id=\(Self.prefijoId + aviso.productId) disparo=\(aviso.fechaDisparo) 09:00 caducidad=\(aviso.fechaCaducidad)")
         }
 
         // 5. Entregar inmediatos y marcar el dedup SOLO si se entregaron.
@@ -105,8 +109,9 @@ final class AvisosCaducidadController {
                     productId: aviso.productId,
                     fechaCaducidad: aviso.fechaCaducidad
                 )
+                NSLog("%@", "[AVISOS] inmediato ENTREGADO + marcarAvisado id=\(Self.prefijoId + aviso.productId) caducidad=\(aviso.fechaCaducidad)")
             } catch {
-                // No se entregó/marcó → se reintenta en el próximo reconcile.
+                NSLog("%@", "[AVISOS] inmediato FALLO (no marcado) id=\(Self.prefijoId + aviso.productId) error=\(error)")
             }
         }
     }

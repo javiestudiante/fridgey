@@ -14,13 +14,16 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         return true
     }
 
-    /// Mostrar el aviso también con la app en primer plano (banner + sonido).
+    /// Mostrar el aviso también con la app en primer plano: banner + lista (que
+    /// quede en el Centro de Notificaciones, no solo el banner efímero) + sonido.
+    /// `.list` es necesario porque los inmediatos se entregan durante el reconcile
+    /// en foreground; sin él bannerean pero no persisten en el centro.
     func userNotificationCenter(
         _ center: UNUserNotificationCenter,
         willPresent notification: UNNotification,
         withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
     ) {
-        completionHandler([.banner, .sound])
+        completionHandler([.banner, .list, .sound])
     }
 
     /// Tap en la notificación → guarda el neveraId pendiente en el router para

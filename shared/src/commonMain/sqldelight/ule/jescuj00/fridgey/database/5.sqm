@@ -1,0 +1,49 @@
+-- Migration: schema version 5 -> 6
+--
+-- Búsqueda de productos por texto (nombre + categoría) migrada de
+-- `LOWER(nombre) LIKE '%term%'` a SQLite FTS5 full-text search: indexada
+-- (sin full table scan) e insensible a acentos/mayúsculas, de modo que
+-- "platano" encuentra "plátano".
+--
+-- Patrón EXTERNAL CONTENT (content='Producto'): la tabla FTS guarda SOLO el
+-- índice invertido, nunca una copia de las filas. content_rowid se mapea al
+-- `rowid` implícito de Producto (su PK es `id TEXT`, no INTEGER, y FTS5 exige
+-- un docid INTEGER; Producto no es WITHOUT ROWID, así que tiene el rowid
+-- implícito habitual). Tokenizer unicode61 con `remove_diacritics 2` (requiere
+-- SQLite >= 3.27 — por eso Android pasa a usar un SQLite moderno vía requery).
+--
+-- Estructura idéntica a la declarada en Producto.sq (verifyMigrations lo exige).
+CREATE VIRTUAL TABLE ProductoFts USING fts5(
+    nombre,
+    categoria,
+    content='Producto',
+    content_rowid='rowid',
+    tokenize='unicode61 remove_diacritics 2'
+);
+
+CREATE TRIGGER Producto_fts_ai AFTER INSERT ON Producto BEGIN
+    INSERT INTO ProductoFts(rowid, nombre, categoria)
+    VALUES (new.rowid, new.nombre, new.categoria);
+END;
+
+CREATE TRIGGER Producto_fts_ad AFTER DELETE ON Producto BEGIN
+    INSERT INTO ProductoFts(ProductoFts, rowid, nombre, categoria)
+    VALUES ('delete', old.rowid, old.nombre, old.categoria);
+END;
+
+CREATE TRIGGER Producto_fts_au AFTER UPDATE ON Producto BEGIN
+    INSERT INTO ProductoFts(ProductoFts, rowid, nombre, categoria)
+    VALUES ('delete', old.rowid, old.nombre, old.categoria);
+    INSERT INTO ProductoFts(rowid, nombre, categoria)
+    VALUES (new.rowid, new.nombre, new.categoria);
+END;
+
+-- Backfill: los triggers de arriba sólo cubren cambios FUTUROS, así que hay que
+-- indexar las filas ya existentes. Sobre una tabla FTS5 external-content recién
+-- creada (vacía), esto es exactamente lo que hace el comando 'rebuild': escanear
+-- la content table e indexar cada fila. Usamos el INSERT...SELECT equivalente en
+-- lugar de `INSERT INTO ProductoFts(ProductoFts) VALUES('rebuild')` porque el
+-- parser de SQLDelight no acepta la pseudo-columna con nombre de tabla en una
+-- sentencia top-level. Mismo índice resultante, mismo tokenizer.
+INSERT INTO ProductoFts(rowid, nombre, categoria)
+SELECT rowid, nombre, categoria FROM Producto;

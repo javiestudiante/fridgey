@@ -15,6 +15,48 @@ CREATE TABLE IF NOT EXISTS Producto (
     FOREIGN KEY (id_nevera) REFERENCES Nevera(id) ON DELETE CASCADE
 );
 
+-- Full-text search index over the free-text columns of Producto (name + category),
+-- backing accent-insensitive product search (replaces the old LOWER(..) LIKE '%term%').
+--
+-- EXTERNAL CONTENT pattern (content='Producto'): the FTS table stores ONLY the inverted
+-- index, never a copy of the rows — the actual text lives in Producto. content_rowid
+-- maps each FTS document to a Producto row by its implicit integer rowid. We map to
+-- `rowid` (not the PK) on purpose: Producto's PRIMARY KEY is `id TEXT`, and FTS5
+-- external-content requires an INTEGER docid; Producto is not WITHOUT ROWID, so it has
+-- the usual implicit integer rowid we hook into here and in the sync triggers below.
+--
+-- Tokenizer: unicode61 with `remove_diacritics 2` → case-folding + accent-insensitive,
+-- so "platano" matches "plátano". `remove_diacritics 2` needs SQLite >= 3.27, which is
+-- why Android bundles a modern SQLite via requery (framework SQLite at minSdk 24 is too
+-- old); iOS system SQLite and the Xerial JVM driver are both new enough.
+CREATE VIRTUAL TABLE ProductoFts USING fts5(
+    nombre,
+    categoria,
+    content='Producto',
+    content_rowid='rowid',
+    tokenize='unicode61 remove_diacritics 2'
+);
+
+-- Keep ProductoFts in sync with Producto using the FTS5 external-content idiom:
+-- inserts add a document; deletes/updates issue a special 'delete' command (which
+-- needs the OLD column values to locate the index entries) before re-inserting.
+CREATE TRIGGER Producto_fts_ai AFTER INSERT ON Producto BEGIN
+    INSERT INTO ProductoFts(rowid, nombre, categoria)
+    VALUES (new.rowid, new.nombre, new.categoria);
+END;
+
+CREATE TRIGGER Producto_fts_ad AFTER DELETE ON Producto BEGIN
+    INSERT INTO ProductoFts(ProductoFts, rowid, nombre, categoria)
+    VALUES ('delete', old.rowid, old.nombre, old.categoria);
+END;
+
+CREATE TRIGGER Producto_fts_au AFTER UPDATE ON Producto BEGIN
+    INSERT INTO ProductoFts(ProductoFts, rowid, nombre, categoria)
+    VALUES ('delete', old.rowid, old.nombre, old.categoria);
+    INSERT INTO ProductoFts(rowid, nombre, categoria)
+    VALUES (new.rowid, new.nombre, new.categoria);
+END;
+
 -- All products in a fridge, soonest to expire first
 selectByNevera:
 SELECT * FROM Producto
@@ -29,12 +71,20 @@ FROM Producto
 WHERE id_nevera = :neveraId
 ORDER BY fecha_caducidad ASC;
 
--- Search by name or category (case-insensitive)
+-- Search by name or category, accent-insensitive, via the FTS5 index. Matching
+-- against the table name (`ProductoFts MATCH :match`) queries ALL indexed columns
+-- (nombre + categoria) by default, preserving the old "match name OR category"
+-- behavior. Selecting `Producto.*` (not FTS columns) keeps the result type as the
+-- Producto row the repository mapper already expects and avoids the FTS5
+-- hidden-column mapping. :match is an already-prepared FTS5 MATCH string (the repo
+-- handles tokenizing / escaping / prefix `*` — HITO 3). Ordering unchanged.
 searchInNevera:
-SELECT * FROM Producto
-WHERE id_nevera = :neveraId
-  AND (LOWER(nombre) LIKE LOWER(:query) OR LOWER(categoria) LIKE LOWER(:query))
-ORDER BY fecha_caducidad ASC;
+SELECT Producto.*
+FROM ProductoFts
+JOIN Producto ON ProductoFts.rowid = Producto.rowid
+WHERE Producto.id_nevera = :neveraId
+  AND ProductoFts MATCH :match
+ORDER BY Producto.fecha_caducidad ASC;
 
 selectById:
 SELECT * FROM Producto WHERE id = ?;

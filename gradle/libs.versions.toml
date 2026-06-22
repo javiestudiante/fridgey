@@ -31,6 +31,7 @@ googleid = "1.1.1"
 cameraX = "1.4.0"
 androidx-work = "2.10.0"      # WorkManager — barrido de avisos de caducidad (Fase 1, Android-only)
 mockk = "1.13.13"
+bundled-sqlite-android = "0.12.0"  # Bundled modern SQLite (3.53.2) for Android — guarantees FTS5 + remove_diacritics 2 (framework SQLite at minSdk 24 is too old / not guaranteed). com.osmerion fork: io.requery:sqlite-android is dead/removed from Maven Central; this one ships an androidx SupportSQLiteOpenHelper.Factory + modern androidx.sqlite.
 
 [libraries]
 kotlin-test = { module = "org.jetbrains.kotlin:kotlin-test", version.ref = "kotlin" }
@@ -55,6 +56,7 @@ sqldelight-coroutines = { module = "app.cash.sqldelight:coroutines-extensions", 
 sqldelight-android-driver = { module = "app.cash.sqldelight:android-driver", version.ref = "sqldelight" }
 sqldelight-native-driver = { module = "app.cash.sqldelight:native-driver", version.ref = "sqldelight" }
 sqldelight-sqlite-driver = { module = "app.cash.sqldelight:sqlite-driver", version.ref = "sqldelight" }   # JVM driver, unit tests only
+bundled-sqlite-android = { module = "com.osmerion.sqlite.android:sqlite-android", version.ref = "bundled-sqlite-android" }   # Bundled SQLite with FTS5 for the Android driver
 # Real Guava, pinned to the version gRPC (via gitlive Firestore) already puts on the
 # runtime classpath. Needed at COMPILE time by CameraX: Firestore's transitive Guava
 # forces `listenablefuture` to the empty 9999.0 stub, so ListenableFuture must come

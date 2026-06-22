@@ -46,13 +46,24 @@ class ProductoRepository(
             .map { rows -> rows.map { it.toDomain() } }
 
     /**
-     * Emits products whose name or category matches [query] (case-insensitive).
+     * Emits products whose name or category matches [query], accent-insensitive,
+     * via the FTS5 index. Matching is whole-token + prefix on the last token (see
+     * [buildFtsMatchQuery]). A blank [query] returns ALL products in the fridge —
+     * preserving the previous behavior — by routing to the plain listing query,
+     * since an empty FTS5 MATCH string is a SQLite syntax error.
      */
-    fun searchProductos(neveraId: String, query: String): Flow<List<Producto>> =
-        queries.searchInNevera(neveraId, "%$query%")
+    fun searchProductos(neveraId: String, query: String): Flow<List<Producto>> {
+        val match = buildFtsMatchQuery(query)
+        val rows = if (match == null) {
+            queries.selectByNevera(neveraId)
+        } else {
+            queries.searchInNevera(neveraId, match)
+        }
+        return rows
             .asFlow()
             .mapToList(Dispatchers.Default)
-            .map { rows -> rows.map { it.toDomain() } }
+            .map { list -> list.map { it.toDomain() } }
+    }
 
     // --- One-shot writes ---
 
@@ -271,4 +282,29 @@ class ProductoRepository(
             unidad = UnidadMedida.fromString(unidad),
             diasAvisoAntes = dias_aviso_antes.toInt(),
         )
+}
+
+/**
+ * Builds a safe FTS5 MATCH expression from raw user input, or `null` when the input
+ * is blank (the caller routes blank → "show all", because an empty MATCH string is a
+ * SQLite syntax error).
+ *
+ * Each whitespace-separated token is wrapped in double quotes — with any internal
+ * double quote doubled — so the token is treated as a literal string. This neutralizes
+ * FTS5 operators (`*`, `:`, `^`, `AND`/`OR`/`NOT`, parentheses, …) and prevents
+ * MATCH-syntax injection from user input. The LAST token additionally gets a trailing
+ * `*` for prefix / as-you-type matching, e.g. `lech ent` → `"lech" "ent"*`. Tokens are
+ * joined by spaces, which FTS5 treats as implicit AND.
+ *
+ * Behavior change vs the old `LIKE '%term%'`: this is whole-token + prefix matching,
+ * NOT arbitrary mid-word substring — "che" no longer finds "Leche", but it is indexed
+ * and accent-insensitive ("platano" finds "plátano"). Intentional and documented.
+ */
+internal fun buildFtsMatchQuery(raw: String): String? {
+    val tokens = raw.trim().split(Regex("\\s+")).filter { it.isNotEmpty() }
+    if (tokens.isEmpty()) return null
+    return tokens.mapIndexed { index, token ->
+        val quoted = "\"" + token.replace("\"", "\"\"") + "\""
+        if (index == tokens.lastIndex) "$quoted*" else quoted
+    }.joinToString(separator = " ")
 }

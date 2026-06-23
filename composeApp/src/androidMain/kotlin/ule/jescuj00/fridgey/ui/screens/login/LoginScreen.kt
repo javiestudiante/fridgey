@@ -30,8 +30,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.LinkAnnotation
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextLinkStyles
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.withLink
 import androidx.compose.ui.unit.dp
 import org.koin.androidx.compose.koinViewModel
 import ule.jescuj00.fridgey.R
@@ -55,6 +61,17 @@ import ule.jescuj00.fridgey.ui.theme.SurfaceWhite
  * "you must offer Sign in with Apple" rule only applies to iOS apps that
  * use third-party SSO; Android has no such requirement.
  */
+
+/**
+ * Public legal pages linked from the login disclaimer. Single source of
+ * truth for these URLs within the Android login module — do not inline
+ * them elsewhere.
+ */
+private object LegalLinks {
+    const val TERMS = "https://javiestudiante.github.io/fridgey-legal/terminos.html"
+    const val PRIVACY = "https://javiestudiante.github.io/fridgey-legal/privacidad.html"
+}
+
 @Composable
 fun LoginScreen(
     onSignedIn: (String) -> Unit,
@@ -121,8 +138,28 @@ fun LoginScreen(
                 Spacer(modifier = Modifier.weight(1f))
 
                 // --- Disclaimer ------------------------------------------------
+                // `LinkAnnotation.Url` + `withLink` hands the tap to the system
+                // URI handler (browser) directly — no manual click callback. The
+                // accent style (mint + underline) is carried per-link via
+                // `TextLinkStyles`, leaving the surrounding copy in the ambient
+                // `onSurfaceVariant` colour passed to `Text`.
+                val linkStyle = SpanStyle(
+                    color = Mint,
+                    textDecoration = TextDecoration.Underline,
+                )
+                val disclaimer = buildAnnotatedString {
+                    append("Al continuar aceptas nuestros ")
+                    withLink(LinkAnnotation.Url(LegalLinks.TERMS, TextLinkStyles(style = linkStyle))) {
+                        append("Términos de uso")
+                    }
+                    append(" y nuestra ")
+                    withLink(LinkAnnotation.Url(LegalLinks.PRIVACY, TextLinkStyles(style = linkStyle))) {
+                        append("Política de privacidad")
+                    }
+                    append(".")
+                }
                 Text(
-                    text = "Al continuar aceptas nuestros términos.",
+                    text = disclaimer,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     textAlign = TextAlign.Center,

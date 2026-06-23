@@ -1,6 +1,14 @@
 import SwiftUI
 import Shared
 
+/// Public legal pages linked from the login disclaimer. Single source of
+/// truth for these URLs on iOS — mirrors `LegalLinks` in the Android
+/// `LoginScreen.kt`.
+private enum LegalLinks {
+    static let terms = "https://javiestudiante.github.io/fridgey-legal/terminos.html"
+    static let privacy = "https://javiestudiante.github.io/fridgey-legal/privacidad.html"
+}
+
 /// Editorial-kitchen login screen.
 ///
 /// The original screen used solid-colour Material-style buttons; the new
@@ -43,9 +51,14 @@ struct LoginView: View {
                 Spacer()
 
                 // --- Disclaimer -------------------------------------------
-                Text("Al continuar aceptas nuestros términos.")
+                // Markdown links hand the tap to the system browser via the
+                // environment `openURL` action — no manual handler. `.tint`
+                // colours the link runs mint; the surrounding copy keeps the
+                // `fridgeyInkMuted` foreground style and the original layout.
+                Text(disclaimer)
                     .font(FridgeyFont.bodySmall)
                     .foregroundStyle(Color.fridgeyInkMuted)
+                    .tint(Color.fridgeyMint)
                     .multilineTextAlignment(.center)
                     .padding(.bottom, FridgeySpacing.xl)
             }
@@ -67,6 +80,26 @@ struct LoginView: View {
             actions: { Button("OK") { viewModel.errorMessage = nil } },
             message: { Text(viewModel.errorMessage ?? "") }
         )
+    }
+
+    /// Disclaimer copy with the two legal links, parsed from Markdown.
+    ///
+    /// Built as an `AttributedString` rather than an interpolated
+    /// `LocalizedStringKey`: injecting the URL constants into a string-literal
+    /// `Text(...)` can break Markdown link parsing, whereas parsing an explicit
+    /// `AttributedString` is deterministic. `.inlineOnlyPreservingWhitespace`
+    /// keeps the single spaces intact and interprets only inline markup (links).
+    /// Link runs are tapped through SwiftUI's automatic `openURL` handling; the
+    /// `.tint` modifier on the `Text` colours them mint.
+    private var disclaimer: AttributedString {
+        let markdown = "Al continuar aceptas nuestros [Términos de uso](\(LegalLinks.terms))"
+            + " y nuestra [Política de privacidad](\(LegalLinks.privacy))."
+        return (try? AttributedString(
+            markdown: markdown,
+            options: AttributedString.MarkdownParsingOptions(
+                interpretedSyntax: .inlineOnlyPreservingWhitespace
+            )
+        )) ?? AttributedString(markdown)
     }
 
     /// White CTA card with a subtle outline and a "Continuar con Google"

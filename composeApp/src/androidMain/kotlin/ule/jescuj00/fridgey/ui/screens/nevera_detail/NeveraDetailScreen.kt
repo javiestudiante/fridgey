@@ -27,6 +27,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -36,6 +37,8 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -75,6 +78,7 @@ import ule.jescuj00.fridgey.ui.components.expirationStateOf
 import ule.jescuj00.fridgey.ui.theme.Amber
 import ule.jescuj00.fridgey.ui.theme.BackButtonShape
 import ule.jescuj00.fridgey.ui.theme.Cream
+import ule.jescuj00.fridgey.ui.theme.FridgeyShapes
 import ule.jescuj00.fridgey.ui.theme.Hairline
 import ule.jescuj00.fridgey.ui.theme.Ink
 import ule.jescuj00.fridgey.ui.theme.InkMuted
@@ -127,7 +131,12 @@ fun NeveraDetailScreen(
         if (state.neveraCerrada) onNavigateBack()
     }
 
-    val showEmpty = !state.isLoading && state.error == null && state.productos.isEmpty()
+    // El onboarding de "nevera vacía" SOLO con la consulta en blanco: con query
+    // vacía, productos == la nevera completa, así que isEmpty() es "nevera vacía"
+    // de verdad. Buscando, una lista vacía es "sin resultados" → va a DetailContent
+    // (que mantiene el campo de búsqueda visible para poder borrar la consulta).
+    val showEmpty = !state.isLoading && state.error == null &&
+        state.productos.isEmpty() && state.query.isBlank()
     val background = if (showEmpty) Cream else Smoke
 
     Box(modifier = Modifier.fillMaxSize().background(background)) {
@@ -168,6 +177,8 @@ fun NeveraDetailScreen(
                 state = state,
                 selectedCategory = selectedCategory,
                 onSelectCategory = { selectedCategory = it },
+                query = state.query,
+                onQueryChange = viewModel::onQueryChange,
                 onBack = onNavigateBack,
                 onLongPressDelete = { pendingDelete = it },
                 mostrarCompartir = true,
@@ -746,6 +757,8 @@ private fun DetailContent(
     state: NeveraDetailUiState,
     selectedCategory: Categoria?,
     onSelectCategory: (Categoria?) -> Unit,
+    query: String,
+    onQueryChange: (String) -> Unit,
     onBack: () -> Unit,
     onLongPressDelete: (Producto) -> Unit,
     mostrarCompartir: Boolean,
@@ -763,6 +776,10 @@ private fun DetailContent(
     val fresh = filtered.filter { expirationStateOf(it.diasRestantes) == ExpirationState.FRESH }
         .sortedBy { it.diasRestantes }
 
+    // Durante una búsqueda, productos == resultados FTS5, así que los chips reflejan
+    // las categorías presentes en los resultados (filtro "dentro de" la búsqueda). Si
+    // hay un chip seleccionado cuya categoría desaparece de los resultados, se muestra
+    // el "sin resultados" de abajo; se recupera editando/borrando la consulta.
     val categoriesPresent = remember(state.productos) {
         Categoria.entries.filter { cat -> state.productos.any { it.categoria == cat } }
     }
@@ -780,6 +797,9 @@ private fun DetailContent(
             )
         }
         item {
+            SearchField(query = query, onQueryChange = onQueryChange)
+        }
+        item {
             FilterRail(
                 total = state.productos.size,
                 categories = categoriesPresent,
@@ -792,8 +812,48 @@ private fun DetailContent(
         urgencySection(this, "Esta semana", Amber, warn, onLongPressDelete)
         urgencySection(this, "Más adelante", Ink, fresh, onLongPressDelete)
 
+        // Sin coincidencias (búsqueda y/o filtro de categoría): mensaje en vez de
+        // baldas vacías. NO es el onboarding de nevera vacía (ese se filtra antes).
+        if (bad.isEmpty() && warn.isEmpty() && fresh.isEmpty()) {
+            item {
+                Text(
+                    text = "No hay productos que coincidan",
+                    style = TextStyle(fontFamily = Inter, fontSize = 15.sp),
+                    color = InkMuted,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 32.dp),
+                )
+            }
+        }
+
         item { Spacer(Modifier.height(112.dp)) }
     }
+}
+
+/** Barra de búsqueda FTS5 (siempre visible) — reusa el estilo de OutlinedTextField de la app. */
+@Composable
+private fun SearchField(query: String, onQueryChange: (String) -> Unit) {
+    OutlinedTextField(
+        value = query,
+        onValueChange = onQueryChange,
+        singleLine = true,
+        placeholder = { Text("Buscar producto", color = InkMuted) },
+        leadingIcon = {
+            Icon(Icons.Filled.Search, contentDescription = null, tint = InkMuted, modifier = Modifier.size(18.dp))
+        },
+        shape = FridgeyShapes.small,
+        colors = OutlinedTextFieldDefaults.colors(
+            focusedBorderColor = MintDeep,
+            unfocusedBorderColor = Hairline,
+            focusedContainerColor = Paper,
+            unfocusedContainerColor = Paper,
+            cursorColor = MintDeep,
+        ),
+        textStyle = TextStyle(fontFamily = Inter, fontSize = 15.sp, color = Ink),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 4.dp),
+    )
 }
 
 /** Emits a SectionHeader + a Shelf of ProductRows, only when [products] is non-empty. */

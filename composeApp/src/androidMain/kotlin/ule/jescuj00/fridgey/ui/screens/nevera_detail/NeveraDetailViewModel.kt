@@ -2,11 +2,13 @@ package ule.jescuj00.fridgey.ui.screens.nevera_detail
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
@@ -27,6 +29,8 @@ data class NeveraDetailUiState(
     val isLoading: Boolean = true,
     val error: String? = null,
     val productos: List<Producto> = emptyList(),
+    /** Texto de búsqueda FTS5 en curso (vacío = lista completa de la nevera). */
+    val query: String = "",
     val neveraNombre: String = "",
     val miembros: List<Usuario> = emptyList(),
     // --- ejes nube/colaboración ---
@@ -81,13 +85,18 @@ class NeveraDetailViewModel(
     private val _uiState = MutableStateFlow(NeveraDetailUiState())
     val uiState: StateFlow<NeveraDetailUiState> = _uiState.asStateFlow()
 
+    /** Fuente reactiva del texto de búsqueda; alimenta el flatMapLatest de [loadProducts]. */
+    private val queryFlow = MutableStateFlow("")
+
     private var observeJob: Job? = null
     private var neveraId: String? = null
     private var currentUserId: String? = null
 
+    @OptIn(ExperimentalCoroutinesApi::class)
     fun loadProducts(neveraId: String, currentUserId: String) {
         this.neveraId = neveraId
         this.currentUserId = currentUserId
+        queryFlow.value = ""  // reentrada limpia: cada carga arranca sin búsqueda activa
         observeJob?.cancel()
         observeJob = viewModelScope.launch {
             refreshNevera()
@@ -95,7 +104,14 @@ class NeveraDetailViewModel(
             // Mirror NeveraListViewModel.observeNeveras / iOS ProductoListBinder:
             // a failure in the underlying SQLDelight Flow must surface as an
             // error UI state, never escape the coroutine and crash the process.
-            productoRepository.getProductosByNevera(neveraId)
+            //
+            // Se reutiliza la búsqueda FTS5 ya testeada (ProductoFtsSearchTest): con
+            // query en blanco, searchProductos enruta a selectByNevera (lista completa,
+            // mismo Flow reactivo y mismo orden que antes); con texto, al índice FTS5.
+            // flatMapLatest cancela la consulta anterior en cada pulsación → filtrado
+            // en tiempo real.
+            queryFlow
+                .flatMapLatest { q -> productoRepository.searchProductos(neveraId, q) }
                 .catch { e ->
                     _uiState.update {
                         it.copy(
@@ -108,6 +124,12 @@ class NeveraDetailViewModel(
                     _uiState.update { it.copy(isLoading = false, productos = list, error = null) }
                 }
         }
+    }
+
+    /** Actualiza el texto de búsqueda; el flujo de [loadProducts] re-filtra en vivo. */
+    fun onQueryChange(q: String) {
+        queryFlow.value = q
+        _uiState.update { it.copy(query = q) }
     }
 
     fun deleteProducto(productoId: String) {

@@ -52,6 +52,9 @@ val repositoryModule: Module = module {
             get(), get(),
             lazy { get<NeveraRemoteRepository>() },
             get(named(SYNC_SCOPE_QUALIFIER)),
+            // Autor de cada producto nuevo: el UID autenticado actual (o null en
+            // neveras LOCAL sin cuenta). Se lee perezosamente en cada inserción.
+            currentUid = { Firebase.auth.currentUser?.uid },
         )
     }
     single { AuthRepository(auth = Firebase.auth, usuarioRepository = get()) }

@@ -12,6 +12,7 @@ CREATE TABLE IF NOT EXISTS Producto (
     unidad TEXT NOT NULL DEFAULT 'unidades',                  -- pairs with `cantidad`; canonical `valor` of the UnidadMedida enum
     updated_at INTEGER,  -- último serverTimestamp de Firestore aplicado (epoch seconds); NULL si nunca sincronizado
     fecha_caducidad_ultimo_aviso INTEGER,  -- LOCAL ONLY — dedup del aviso de caducidad (epoch sec, UTC-midnight); NULL = nunca avisado. Excluir del mapper de Firestore (Fase 2)
+    creado_por TEXT,  -- UID de quien creó el producto; viaja a Firestore como `creadoPor` (actor del fan-out de "producto añadido"). NULL en productos LOCAL antiguos / offline sin cuenta
     FOREIGN KEY (id_nevera) REFERENCES Nevera(id) ON DELETE CASCADE
 );
 
@@ -90,8 +91,8 @@ selectById:
 SELECT * FROM Producto WHERE id = ?;
 
 insert:
-INSERT INTO Producto (id, id_nevera, codigo_barras, nombre, categoria, fecha_caducidad, fecha_registro, imagen_url, cantidad, dias_aviso_antes, unidad)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+INSERT INTO Producto (id, id_nevera, codigo_barras, nombre, categoria, fecha_caducidad, fecha_registro, imagen_url, cantidad, dias_aviso_antes, unidad, creado_por)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 update:
 UPDATE Producto
@@ -144,12 +145,12 @@ ORDER BY p.nombre ASC;
 -- INSERT OR REPLACE deliberately: REPLACE deletes + reinserts the row,
 -- which would fire ON DELETE CASCADE triggers and reset unset columns.
 insertFromRemote:
-INSERT OR IGNORE INTO Producto (id, id_nevera, codigo_barras, nombre, categoria, fecha_caducidad, fecha_registro, imagen_url, cantidad, dias_aviso_antes, unidad, updated_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+INSERT OR IGNORE INTO Producto (id, id_nevera, codigo_barras, nombre, categoria, fecha_caducidad, fecha_registro, imagen_url, cantidad, dias_aviso_antes, unidad, updated_at, creado_por)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 updateFromRemote:
 UPDATE Producto
-SET codigo_barras = ?, nombre = ?, categoria = ?, fecha_caducidad = ?, fecha_registro = ?, imagen_url = ?, cantidad = ?, dias_aviso_antes = ?, unidad = ?, updated_at = ?
+SET codigo_barras = ?, nombre = ?, categoria = ?, fecha_caducidad = ?, fecha_registro = ?, imagen_url = ?, cantidad = ?, dias_aviso_antes = ?, unidad = ?, updated_at = ?, creado_por = ?
 WHERE id = ?;
 
 -- TODOS los productos locales con sólo las columnas necesarias para construir

@@ -64,6 +64,7 @@ class ProductoFtsSearchTest {
             cantidad = 1.0,
             dias_aviso_antes = 3,
             unidad = "unidades",
+            creado_por = null,
         )
     }
 

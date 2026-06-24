@@ -1,5 +1,6 @@
 package ule.jescuj00.fridgey.domain.usecase
 
+import ule.jescuj00.fridgey.data.remote.firestore.MarcadorExpulsion
 import ule.jescuj00.fridgey.data.remote.firestore.NeveraRemoteRepository
 import ule.jescuj00.fridgey.data.repository.NeveraRepository
 import ule.jescuj00.fridgey.domain.model.ErrorCode
@@ -75,6 +76,12 @@ class ExpulsarColaboradorUseCase(
                         neveraId = neveraId,
                         colaboradores = doc.colaboradores - colaboradorId,
                         miembros = doc.miembros.filterNot { it.uid == colaboradorId },
+                        // Marcador de expulsión (escritura del dueño): la Cloud
+                        // Function avisará también al expulsado. actor = dueño.
+                        expulsion = MarcadorExpulsion(
+                            actorUid = requesterId,
+                            objetivos = listOf(colaboradorId),
+                        ),
                     )
                 }
                 // Consistencia local inmediata; el listener vivo re-confirma.

@@ -69,6 +69,10 @@ data class ProductoDoc(
     val cantidad: Double = 1.0,
     val diasAvisoAntes: Int = 3,
     val unidad: String = "unidades",
+    // UID de quien añadió el producto. Lo consume la Cloud Function de
+    // "producto añadido" como ACTOR del fan-out (se excluye del envío). Default
+    // "" para que documentos antiguos sin el campo sigan deserializando.
+    val creadoPor: String = "",
     val updatedAt: BaseTimestamp? = null,
 )
 
@@ -114,5 +118,6 @@ fun Producto.toProductoDoc(): ProductoDoc = ProductoDoc(
     cantidad = cantidad,
     diasAvisoAntes = diasAvisoAntes,
     unidad = unidad.valor,
+    creadoPor = creadoPor.orEmpty(),
     updatedAt = null,
 )

@@ -35,6 +35,28 @@ data class NeveraDescubierta(
 )
 
 /**
+ * Marcador de expulsión que SOLO el DUEÑO estampa en su escritura de baja de
+ * miembros (expulsar a uno / dejar de compartir). Lo lee la Cloud Function de
+ * "colaborador eliminado" para distinguir una EXPULSIÓN (la provoca el dueño,
+ * hay que avisar también al expulsado) de una AUTO-SALIDA (la provoca el propio
+ * colaborador, que no escribe marcador alguno — la regla `esAutoSalidaValida`
+ * solo le deja tocar colaboradores/miembros/updatedAt).
+ *
+ * La función lo trata como expulsión SOLO si, en el mismo evento, [objetivos]
+ * coincide con los uids retirados en el diff Y el timestamp del marcador
+ * coincide con el `updatedAt` del write (ambos `serverTimestamp` resueltos en la
+ * MISMA escritura atómica → idénticos). Así un marcador viejo que quede en el
+ * doc no puede contaminar una auto-salida posterior del mismo uid.
+ *
+ * @property actorUid  el dueño que ejecuta la baja.
+ * @property objetivos los uids retirados de `colaboradores` en este write.
+ */
+data class MarcadorExpulsion(
+    val actorUid: String,
+    val objetivos: List<String>,
+)
+
+/**
  * Single point of contact with Firestore for collaborative fridges
  * (`neveras/{id}` + its `productos` subcollection). Lives in commonMain on
  * top of the GitLive SDK, so the same code drives Android and iOS.
@@ -131,23 +153,49 @@ class NeveraRemoteRepository(private val firestore: FirebaseFirestore) {
      *
      * The miembros travel as plain maps (same rationale as
      * [aceptarInvitacion]: identical wire shape on both platforms).
+     *
+     * [expulsion] != null SOLO en escrituras del dueño (expulsar / dejar de
+     * compartir): añade el marcador `ultimoEventoColab` + su sello
+     * `ultimoEventoColabAt`. Ambos `serverTimestamp` de ESTE update resuelven al
+     * mismo instante, así que `ultimoEventoColabAt == updatedAt` le prueba a la
+     * Cloud Function que el marcador pertenece a este evento (ver
+     * [MarcadorExpulsion]). El dueño tiene `allow update` completo, por lo que
+     * estos campos extra no chocan con ninguna regla; la auto-salida pasa
+     * expulsion=null y no toca campos fuera del whitelist de `esAutoSalidaValida`.
+     * El marcador NO está en [NeveraDoc] a propósito: el decoder de GitLive
+     * ignora claves desconocidas, así que el cliente lo round-tripea sin verlo y
+     * solo lo consume la función (admin SDK, sin esquema).
      */
     suspend fun actualizarMiembros(
         neveraId: String,
         colaboradores: List<String>,
         miembros: List<MiembroDoc>,
+        expulsion: MarcadorExpulsion? = null,
     ) {
-        neveraRef(neveraId).update(
-            "colaboradores" to colaboradores,
-            "miembros" to miembros.map { miembro ->
-                mapOf(
-                    "uid" to miembro.uid,
-                    "nombre" to miembro.nombre,
-                    "fotoUrl" to miembro.fotoUrl,
+        val campos = buildList<Pair<String, Any?>> {
+            add("colaboradores" to colaboradores)
+            add(
+                "miembros" to miembros.map { miembro ->
+                    mapOf(
+                        "uid" to miembro.uid,
+                        "nombre" to miembro.nombre,
+                        "fotoUrl" to miembro.fotoUrl,
+                    )
+                }
+            )
+            add("updatedAt" to FieldValue.serverTimestamp)
+            if (expulsion != null) {
+                add(
+                    "ultimoEventoColab" to mapOf(
+                        "tipo" to "expulsion",
+                        "actorUid" to expulsion.actorUid,
+                        "objetivos" to expulsion.objetivos,
+                    )
                 )
-            },
-            "updatedAt" to FieldValue.serverTimestamp,
-        )
+                add("ultimoEventoColabAt" to FieldValue.serverTimestamp)
+            }
+        }
+        neveraRef(neveraId).update(*campos.toTypedArray())
     }
 
     /**

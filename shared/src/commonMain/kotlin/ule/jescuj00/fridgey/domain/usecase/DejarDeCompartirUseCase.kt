@@ -1,5 +1,6 @@
 package ule.jescuj00.fridgey.domain.usecase
 
+import ule.jescuj00.fridgey.data.remote.firestore.MarcadorExpulsion
 import ule.jescuj00.fridgey.data.remote.firestore.MiembroDoc
 import ule.jescuj00.fridgey.data.remote.firestore.NeveraRemoteRepository
 import ule.jescuj00.fridgey.data.repository.NeveraRepository
@@ -62,6 +63,11 @@ class DejarDeCompartirUseCase(
                     fotoUrl = owner?.fotoUrl,
                 )
                 try {
+                    // Colaboradores que van a ser retirados (= objetivos del
+                    // marcador). Se leen del SERVIDOR, no de la copia local, por
+                    // el mismo motivo que en Expulsar: una copia desfasada daría
+                    // un conjunto que no casaría con el diff que ve la función.
+                    val objetivos = remoteRepository.getNevera(neveraId)?.colaboradores ?: emptyList()
                     // AWAIT: la expulsión debe constar en el servidor. El doc
                     // NO se borra — solo se vacía `colaboradores`/`miembros`
                     // (caso "vaciar" del motor genérico actualizarMiembros).
@@ -69,6 +75,13 @@ class DejarDeCompartirUseCase(
                         neveraId = neveraId,
                         colaboradores = emptyList(),
                         miembros = listOf(ownerMiembro),
+                        // Expulsión masiva del dueño: avisar a cada uno de los
+                        // retirados. actor = dueño. Si no quedaba nadie, objetivos
+                        // va vacío y la función no genera evento alguno.
+                        expulsion = MarcadorExpulsion(
+                            actorUid = requesterId,
+                            objetivos = objetivos,
+                        ),
                     )
                     // Consistencia local inmediata; el listener vivo re-confirma.
                     neveraRepository.vaciarColaboradoresLocal(neveraId)

@@ -1,0 +1,15 @@
+-- Migration: schema version 6 -> 7
+--
+-- Notificaciones colaborativas push (HITO 1): `creado_por` en Producto guarda
+-- el UID de quien creó cada producto. Viaja a Firestore como `creadoPor` y la
+-- Cloud Function de "producto añadido" lo usa como ACTOR del fan-out (al actor
+-- no se le notifica). NULLABLE, sin DEFAULT ni backfill: los productos LOCAL
+-- ya existentes (creados antes de esta fase, u offline sin cuenta) se quedan en
+-- NULL = autor desconocido, y eso es aceptable (sus docs remotos, si se suben,
+-- llevan creadoPor = "" y simplemente no excluyen a nadie concreto).
+--
+-- Como en 2.sqm / 4.sqm, es un ALTER simple (sin rebuild de tabla). SQLite añade
+-- la columna al FINAL de Producto, por lo que el orden coincide con Producto.sq,
+-- donde `creado_por` se declara como última columna (tras
+-- `fecha_caducidad_ultimo_aviso`, antes de la FOREIGN KEY).
+ALTER TABLE Producto ADD COLUMN creado_por TEXT;

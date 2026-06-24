@@ -26,6 +26,12 @@ data class Producto(
     // Lead-time (in days) for the expiry notification. 0 means "warn me on
     // the day". Stored as a plain Int; the notification scheduler reads it.
     val diasAvisoAntes: Int,
+    // UID de quien creó el producto. Se estampa al insertar y se conserva
+    // intacto en las ediciones (editar no cambia el autor). Viaja a Firestore
+    // como `creadoPor` para que la Cloud Function de "producto añadido" sepa
+    // QUIÉN es el actor y lo excluya del fan-out. Nullable: productos LOCAL
+    // antiguos (creados antes de esta fase u offline sin cuenta) no lo tienen.
+    val creadoPor: String? = null,
 ) {
     // Calculated at read time; negative means already expired
     val diasRestantes: Int

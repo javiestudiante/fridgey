@@ -31,6 +31,11 @@ class ProductoRepository(
     // not force Firestore initialization; only the first SYNCED push does.
     private val remoteRepository: Lazy<NeveraRemoteRepository>,
     private val syncScope: CoroutineScope,
+    // UID del usuario autenticado en el momento de crear un producto, o null
+    // (neveras LOCAL sin cuenta). Función y no AuthRepository directo para no
+    // acoplar este repo a la capa de auth y mantenerlo trivial de falsear en
+    // tests. Se estampa SOLO al insertar; las ediciones conservan el autor.
+    private val currentUid: () -> String? = { null },
 ) {
 
     // --- Reactive queries (Flow) ---
@@ -68,23 +73,29 @@ class ProductoRepository(
     // --- One-shot writes ---
 
     suspend fun insertProducto(producto: Producto): Unit = withContext(Dispatchers.Default) {
+        // Autor del producto: se respeta el que traiga el dominio y, si no, se
+        // estampa el usuario autenticado actual. Se aplica tanto a la fila local
+        // como al doc remoto (vía `conAutor`), de modo que el `creadoPor` que lee
+        // la Cloud Function de "producto añadido" identifica al actor del fan-out.
+        val conAutor = producto.copy(creadoPor = producto.creadoPor ?: currentUid())
         queries.insert(
-            id = producto.id,
-            id_nevera = producto.idNevera,
-            codigo_barras = producto.codigoBarras,
-            nombre = producto.nombre,
-            categoria = producto.categoria.valor,
-            fecha_caducidad = producto.fechaCaducidad.toEpochSeconds(),
-            fecha_registro = producto.fechaRegistro.toEpochSeconds(),
-            imagen_url = producto.imagenUrl,
+            id = conAutor.id,
+            id_nevera = conAutor.idNevera,
+            codigo_barras = conAutor.codigoBarras,
+            nombre = conAutor.nombre,
+            categoria = conAutor.categoria.valor,
+            fecha_caducidad = conAutor.fechaCaducidad.toEpochSeconds(),
+            fecha_registro = conAutor.fechaRegistro.toEpochSeconds(),
+            imagen_url = conAutor.imagenUrl,
             // `cantidad` is now REAL in SQLite — SQLDelight binds it as
             // `Double` directly, so no .toLong() coercion any more.
-            cantidad = producto.cantidad,
-            dias_aviso_antes = producto.diasAvisoAntes.toLong(),
-            unidad = producto.unidad.valor,
+            cantidad = conAutor.cantidad,
+            dias_aviso_antes = conAutor.diasAvisoAntes.toLong(),
+            unidad = conAutor.unidad.valor,
+            creado_por = conAutor.creadoPor,
         )
-        pushSiSynced(producto.idNevera) {
-            remoteRepository.value.setProducto(producto.idNevera, producto.id, producto.toProductoDoc())
+        pushSiSynced(conAutor.idNevera) {
+            remoteRepository.value.setProducto(conAutor.idNevera, conAutor.id, conAutor.toProductoDoc())
         }
     }
 
@@ -186,6 +197,7 @@ class ProductoRepository(
                     dias_aviso_antes = doc.diasAvisoAntes.toLong(),
                     unidad = doc.unidad,
                     updated_at = updatedAtSeconds,
+                    creado_por = doc.creadoPor.ifBlank { null },
                 )
             } else {
                 queries.updateFromRemote(
@@ -199,6 +211,7 @@ class ProductoRepository(
                     dias_aviso_antes = doc.diasAvisoAntes.toLong(),
                     unidad = doc.unidad,
                     updated_at = updatedAtSeconds,
+                    creado_por = doc.creadoPor.ifBlank { null },
                     id = productoId,
                 )
             }
@@ -281,6 +294,7 @@ class ProductoRepository(
             cantidad = cantidad,
             unidad = UnidadMedida.fromString(unidad),
             diasAvisoAntes = dias_aviso_antes.toInt(),
+            creadoPor = creado_por,
         )
 }
 

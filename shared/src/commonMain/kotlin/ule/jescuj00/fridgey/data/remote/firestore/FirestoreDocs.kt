@@ -36,6 +36,8 @@ import ule.jescuj00.fridgey.domain.model.Producto
 const val COLECCION_NEVERAS = "neveras"
 const val COLECCION_PRODUCTOS = "productos"
 const val COLECCION_INVITACIONES = "invitaciones"
+const val COLECCION_USUARIOS = "usuarios"
+const val COLECCION_TOKENS = "tokens"
 
 /** Denormalized member profile embedded in [NeveraDoc.miembros]. */
 @Serializable
@@ -86,6 +88,19 @@ data class ProductoDoc(
  * rules only allow members), yet the join UI wants to show which fridge
  * they are joining.
  */
+/**
+ * Documento en `usuarios/{uid}/tokens/{idInstalacion}`. El id del doc es el id
+ * de instalación ESTABLE (no el token crudo, cuyos caracteres romperían la ruta
+ * y que además rota con el tiempo). `updatedAt` es un serverTimestamp, igual que
+ * en [NeveraDoc]/[ProductoDoc]; se escribe pasando `Timestamp.ServerTimestamp`.
+ */
+@Serializable
+data class TokenDoc(
+    val token: String = "",
+    val platform: String = "",
+    val updatedAt: BaseTimestamp? = null,
+)
+
 @Serializable
 data class InvitacionDoc(
     val neveraId: String = "",

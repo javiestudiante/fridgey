@@ -2,6 +2,8 @@ package ule.jescuj00.fridgey.data.repository
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlin.uuid.ExperimentalUuidApi
+import kotlin.uuid.Uuid
 import ule.jescuj00.fridgey.database.PreferenciaQueries
 
 /**
@@ -56,8 +58,27 @@ class PreferenciasRepository(
             )
         }
 
+    /**
+     * Id de instalación ESTABLE de este dispositivo (UUID), creado al primer
+     * acceso y persistido para siempre. Sirve de id de documento en
+     * `usuarios/{uid}/tokens/{idInstalacion}` para que cada dispositivo tenga UNA
+     * fila de token estable (en vez de usar el token crudo, que rota y cuyos
+     * caracteres romperían la ruta). Get-or-create dentro de una transacción para
+     * que dos llamadas concurrentes no generen dos ids distintos.
+     */
+    @OptIn(ExperimentalUuidApi::class)
+    suspend fun idInstalacion(): String = withContext(Dispatchers.Default) {
+        queries.transactionWithResult {
+            queries.selectByClave(CLAVE_ID_INSTALACION).executeAsOneOrNull()
+                ?: Uuid.random().toString().also { nuevo ->
+                    queries.upsert(clave = CLAVE_ID_INSTALACION, valor = nuevo)
+                }
+        }
+    }
+
     companion object {
         const val CLAVE_AVISOS_CADUCIDAD = "avisos_caducidad"
         const val CLAVE_PERMISO_NOTIF_SOLICITADO = "permiso_notif_solicitado"
+        const val CLAVE_ID_INSTALACION = "id_instalacion"
     }
 }

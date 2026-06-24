@@ -42,14 +42,32 @@ data class NeveraDescubierta(
  * colaborador, que no escribe marcador alguno — la regla `esAutoSalidaValida`
  * solo le deja tocar colaboradores/miembros/updatedAt).
  *
- * La función lo trata como expulsión SOLO si, en el mismo evento, [objetivos]
- * coincide con los uids retirados en el diff Y el timestamp del marcador
- * coincide con el `updatedAt` del write (ambos `serverTimestamp` resueltos en la
- * MISMA escritura atómica → idénticos). Así un marcador viejo que quede en el
- * doc no puede contaminar una auto-salida posterior del mismo uid.
+ * CONTRATO de desambiguación (lo implementa el HITO 3):
+ *  - La fuente de verdad de A QUIÉN notificar es siempre
+ *    `retirados = before.colaboradores − after.colaboradores`. [objetivos] NO se
+ *    usa para decidir destinatarios.
+ *  - Es expulsión / dejar-de-compartir SI Y SOLO SI `ultimoEventoColabAt` es
+ *    FRESCO, es decir `== after.updatedAt` (ambos `serverTimestamp` del MISMO
+ *    write resuelven al mismo instante). En ese caso los `retirados` son los
+ *    expulsados (avisar también a cada uno de ellos, además del resto).
+ *  - Si no hay marcador fresco → AUTO-SALIDA: actor = el uid retirado, y solo se
+ *    avisa a los que quedan.
+ *  - Por qué el timestamp y NO `objetivos == retirados`: condicionar a los
+ *    objetivos mete una carrera en "dejar de compartir" (lee colaboradores del
+ *    servidor y luego escribe; si alguien se auto-sale en esa ventana,
+ *    `objetivos` trae un uid de más y clasificaría una expulsión real como
+ *    auto-salida). El timestamp fresco no tiene esa carrera: la auto-salida no
+ *    puede tocar `ultimoEventoColabAt` (`hasOnly` de `esAutoSalidaValida`) y el
+ *    renombrado no lo estampa, así que solo un write de baja del dueño lo deja
+ *    igual a `updatedAt`.
+ *  - Comparar los Timestamp con `.isEqual()` / `.toMillis()`, NUNCA con `===`.
  *
- * @property actorUid  el dueño que ejecuta la baja.
- * @property objetivos los uids retirados de `colaboradores` en este write.
+ * [objetivos] y [actorUid] viajan como metadato informativo (logging / payload),
+ * no como condición de clasificación.
+ *
+ * @property actorUid  el dueño que ejecuta la baja (metadato informativo).
+ * @property objetivos los uids retirados de `colaboradores` en este write
+ *   (metadato informativo; los destinatarios reales salen del diff en la función).
  */
 data class MarcadorExpulsion(
     val actorUid: String,

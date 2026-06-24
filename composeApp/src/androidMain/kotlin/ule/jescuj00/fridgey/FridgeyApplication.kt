@@ -19,6 +19,7 @@ import ule.jescuj00.fridgey.di.sharedModules
 import ule.jescuj00.fridgey.di.viewModelModule
 import ule.jescuj00.fridgey.domain.model.auth.AuthState
 import ule.jescuj00.fridgey.domain.notification.NotificacionCaducidadScheduler
+import ule.jescuj00.fridgey.domain.notification.RegistroTokenPush
 import ule.jescuj00.fridgey.notificaciones.CanalCaducidad
 
 class FridgeyApplication : Application() {
@@ -49,10 +50,19 @@ class FridgeyApplication : Application() {
         val syncScope = koin.get<CoroutineScope>(named(SYNC_SCOPE_QUALIFIER))
         val syncManager = koin.get<SyncManager>()
         val authRepository = koin.get<AuthRepository>()
+        val registroToken = koin.get<RegistroTokenPush>()
         syncScope.launch {
             authRepository.observeAuthState().collect { state ->
                 when (state) {
-                    is AuthState.Authenticated -> syncManager.start(syncScope, state.user.uid)
+                    is AuthState.Authenticated -> {
+                        syncManager.start(syncScope, state.user.uid)
+                        // Registra/refresca el token FCM de este dispositivo. En
+                        // launch aparte: register() hace E/S de red y no debe
+                        // bloquear el procesado de estados de auth. El BORRADO en
+                        // logout NO va aquí: lo hace SignOutUseCase ANTES de cerrar
+                        // sesión, mientras aún hay auth para autorizar el delete.
+                        syncScope.launch { registroToken.register(state.user.uid) }
+                    }
                     AuthState.Unauthenticated -> syncManager.stop()
                     AuthState.Loading -> Unit
                     is AuthState.Error -> syncManager.stop()

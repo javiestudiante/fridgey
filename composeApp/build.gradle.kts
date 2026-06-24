@@ -15,7 +15,10 @@ plugins {
 kotlin {
     androidTarget {
         compilerOptions {
-            jvmTarget.set(JvmTarget.JVM_11)
+            // JVM 17 igual que :shared — necesario para inlinear las funciones
+            // inline del SDK GitLive Firestore (p.ej. DocumentReference.set),
+            // que ahora también se invocan desde androidMain (RegistroTokenPushAndroid).
+            jvmTarget.set(JvmTarget.JVM_17)
         }
     }
 
@@ -53,6 +56,11 @@ kotlin {
             implementation(libs.mlkit.text.recognition)
             // WorkManager — barrido diario/one-time de avisos de caducidad (Fase 1).
             implementation(libs.androidx.work.runtime.ktx)
+            // FCM — token push (HITO 2) + recepción de mensajes (HITO 4). La BoM
+            // (misma que usa shared/androidMain para fijar versiones Firebase)
+            // proporciona la versión de firebase-messaging.
+            implementation(project.dependencies.platform(libs.firebase.bom))
+            implementation(libs.firebase.messaging)
         }
         commonMain.dependencies {
             implementation(libs.compose.runtime)
@@ -99,8 +107,10 @@ android {
         }
     }
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_11
-        targetCompatibility = JavaVersion.VERSION_11
+        // Debe coincidir con el jvmTarget de Kotlin (JVM 17, requerido por las
+        // inline functions de GitLive — mismo motivo que en :shared).
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
     }
 }
 

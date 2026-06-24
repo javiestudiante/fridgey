@@ -63,6 +63,6 @@ val useCaseModule: Module = module {
 
     factory { SignInWithGoogleUseCase(get(), get()) }
     factory { SignInWithAppleUseCase(get(), get()) }
-    factory { SignOutUseCase(get()) }
+    factory { SignOutUseCase(get(), get()) }
     factory { ObserveAuthStateUseCase(get()) }
 }

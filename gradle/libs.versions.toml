@@ -90,6 +90,7 @@ gitlive-firebase-common = { module = "dev.gitlive:firebase-common", version.ref 
 gitlive-firebase-firestore = { module = "dev.gitlive:firebase-firestore", version.ref = "gitlive-firebase" }
 firebase-bom = { module = "com.google.firebase:firebase-bom", version.ref = "firebase-bom" }
 firebase-auth-android = { module = "com.google.firebase:firebase-auth" }   # version pulled from BoM
+firebase-messaging = { module = "com.google.firebase:firebase-messaging" } # version pulled from BoM
 androidx-credentials = { module = "androidx.credentials:credentials", version.ref = "androidx-credentials" }
 androidx-credentials-play-services-auth = { module = "androidx.credentials:credentials-play-services-auth", version.ref = "androidx-credentials" }
 googleid = { module = "com.google.android.libraries.identity.googleid:googleid", version.ref = "googleid" }

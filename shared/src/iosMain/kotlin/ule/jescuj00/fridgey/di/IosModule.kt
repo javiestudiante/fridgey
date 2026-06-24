@@ -9,6 +9,8 @@ import ule.jescuj00.fridgey.data.binders.ExpiringTodayBinder
 import ule.jescuj00.fridgey.data.binders.NeveraListBinder
 import ule.jescuj00.fridgey.data.binders.ProductoListBinder
 import ule.jescuj00.fridgey.data.db.DatabaseDriverFactory
+import ule.jescuj00.fridgey.domain.notification.RegistroTokenPush
+import ule.jescuj00.fridgey.notificaciones.RegistroTokenPushIos
 
 /**
  * Supplies iOS-only bindings — the [DatabaseDriverFactory] for iOS
@@ -26,4 +28,6 @@ fun iosModule(): Module = module {
     factory { ProductoListBinder(get()) }    // idem
     factory { NeveraListBinder(get()) }      // idem
     factory { ExpiringTodayBinder(get()) }   // idem
+    // Puerto de token push: NO-OP en iOS hasta el HITO 5 (puente APNs→FCM).
+    single<RegistroTokenPush> { RegistroTokenPushIos() }
 }

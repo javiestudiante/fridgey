@@ -37,6 +37,16 @@ service cloud.firestore {
     // Users can only read/write their own user document
     match /usuarios/{userId} {
       allow read, write: if request.auth != null && request.auth.uid == userId;
+
+      // Tokens de notificaciones push del usuario
+      // (usuarios/{uid}/tokens/{idInstalacion}). Las reglas NO cascadean a las
+      // subcolecciones, así que sin este bloque toda escritura/borrado de token
+      // sería denegada por defecto. Solo el propio usuario gestiona sus tokens;
+      // el borrado en logout debe ocurrir ANTES del signOut (con auth viva). Las
+      // Cloud Functions los leen con el Admin SDK, que se salta las reglas.
+      match /tokens/{idInstalacion} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
     }
 
     // Fridges: owner has full access, collaborators can read products

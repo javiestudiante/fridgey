@@ -4,16 +4,18 @@ import * as logger from "firebase-functions/logger";
 
 /**
  * Códigos de error de FCM que significan "este token ya no sirve" y, por tanto,
- * hay que PODARLO (borrar su doc en usuarios/{uid}/tokens). El set se valida
- * contra los typings de firebase-admin v13 instalado (ver functions/README.md):
+ * hay que PODARLO (borrar su doc en usuarios/{uid}/tokens). Validado contra los
+ * typings de firebase-admin v13 (FirebaseMessagingError antepone `messaging/`):
  *  - registration-token-not-registered: la app se desinstaló / el token caducó.
- *  - invalid-argument: token malformado (p.ej. cadena corrupta en la ruta).
- * Cualquier otro código (unavailable, internal, quota…) es transitorio: solo log,
- * NUNCA se borra el token.
+ *
+ * DELIBERADAMENTE NO se incluye `messaging/invalid-argument`: ese código está
+ * sobrecargado — además de "token malformado" se lanza por payload mal formado,
+ * así que un bug de payload borraría TODOS los tokens del multicast. Con
+ * invalid-argument solo se loguea (ver más abajo). Cualquier otro código
+ * (unavailable, internal, quota…) es transitorio: solo log, nunca se borra.
  */
 const CODIGOS_TOKEN_MUERTO = new Set<string>([
   "messaging/registration-token-not-registered",
-  "messaging/invalid-argument",
 ]);
 
 /** Tipos de evento que el HITO 4 usa para enrutar el tap. */

@@ -35,11 +35,14 @@ destinatario (no un multicast global):
    que el cliente (HITO 4) pueda filtrar, en un dispositivo compartido, contra la
    sesión activa. `android.priority = "high"`, `apns.payload.aps.sound = "default"`.
 4. Recorre el `BatchResponse` y **poda** los tokens muertos: borra el doc de token
-   cuyo `error.code` sea `messaging/registration-token-not-registered` o
-   `messaging/invalid-argument` (verificado contra los typings de
-   `firebase-admin@13.10.0`: `FirebaseMessagingError` antepone el prefijo
-   `messaging/` a los códigos `registration-token-not-registered` /
-   `invalid-argument`). Cualquier otro código es transitorio → solo log.
+   cuyo `error.code` sea `messaging/registration-token-not-registered`
+   (verificado contra los typings de `firebase-admin@13.10.0`:
+   `FirebaseMessagingError` antepone el prefijo `messaging/` al código interno
+   `registration-token-not-registered`). **No** se poda con
+   `messaging/invalid-argument`: ese código está sobrecargado (también lo lanza un
+   payload mal formado), así que borrar por él arriesgaría eliminar todos los
+   tokens de un multicast ante un bug de payload — se loguea sin borrar. Cualquier
+   otro código es transitorio → solo log.
 
 Cada destinatario va en su propio `try/catch`: un fallo a uno no aborta el resto.
 Early-return si no hay destinatarios (cubre el lote de `uploadNevera`

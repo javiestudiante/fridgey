@@ -27,8 +27,13 @@ struct NeveraDetailView: View {
         )
     }
 
+    /// Onboarding de "nevera vacía" SOLO con la búsqueda en blanco: con query
+    /// vacía, productos == la nevera completa, así que isEmpty es "vacía" de
+    /// verdad. Buscando, una lista vacía es "sin resultados" → va a `content`
+    /// (que mantiene el campo de búsqueda visible para poder borrar la consulta).
     private var isEmpty: Bool {
-        !viewModel.state.isLoading && viewModel.state.error == nil && viewModel.state.productos.isEmpty
+        !viewModel.state.isLoading && viewModel.state.error == nil
+            && viewModel.state.productos.isEmpty && viewModel.state.query.isEmpty
     }
 
     var body: some View {
@@ -453,13 +458,54 @@ struct NeveraDetailView: View {
         return ScrollView {
             VStack(spacing: 0) {
                 header(emptyVariant: false)
+                searchField
                 filterRail
                 urgencySection("Caduca ya", .fridgeyRust, bad)
                 urgencySection("Esta semana", .fridgeyAmber, warn)
                 urgencySection("Más adelante", .fridgeyInk, fresh)
+                // Sin coincidencias (búsqueda y/o filtro de categoría): mensaje en
+                // vez de baldas vacías. NO es el onboarding de nevera vacía (ése se
+                // filtra antes en `isEmpty`).
+                if bad.isEmpty && warn.isEmpty && fresh.isEmpty {
+                    Text("No hay productos que coincidan")
+                        .font(.custom("Inter-Regular", size: 15))
+                        .foregroundStyle(Color.fridgeyInkMuted)
+                        .frame(maxWidth: .infinity)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 32)
+                }
                 Spacer().frame(height: 112)
             }
         }
+    }
+
+    // MARK: - Search field (siempre visible — paridad con Android)
+
+    private var searchField: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 16))
+                .foregroundStyle(Color.fridgeyInkMuted)
+            TextField(
+                "Buscar producto",
+                text: Binding(
+                    get: { viewModel.state.query },
+                    set: { viewModel.onQueryChange($0) }
+                ),
+                prompt: Text("Buscar producto").foregroundColor(Color.fridgeyInkMuted)
+            )
+            .font(.custom("Inter-Regular", size: 16))
+            .foregroundStyle(Color.fridgeyInk)
+            .autocorrectionDisabled()
+            .textInputAutocapitalization(.never)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .background(Color.fridgeySurfaceWhite, in: RoundedRectangle(cornerRadius: 16))
+        .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.fridgeyHairline, lineWidth: 1))
+        .padding(.horizontal, 16)
+        .padding(.top, 4)
+        .padding(.bottom, 4)
     }
 
     @ViewBuilder

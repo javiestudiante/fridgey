@@ -14,6 +14,8 @@ final class NeveraDetailViewModel: ObservableObject {
         var isLoading: Bool = true
         var error: String? = nil
         var productos: [Producto] = []
+        /// Texto de búsqueda FTS5 en curso (vacío = lista completa de la nevera).
+        var query: String = ""
         var neveraNombre: String = ""
         var miembros: [Usuario] = []
         // --- ejes nube/colaboración (paridad con Android) ---
@@ -70,6 +72,7 @@ final class NeveraDetailViewModel: ObservableObject {
     }
 
     func start() {
+        state.query = ""  // reset al (re)entrar — el binder arranca también en blanco
         loadNeveraName()
         loadMiembros()
         binder.start(
@@ -94,6 +97,14 @@ final class NeveraDetailViewModel: ObservableObject {
 
     func stop() {
         binder.dispose()
+    }
+
+    /// El campo de búsqueda cambió: actualiza el texto y se lo pasa al binder,
+    /// que re-filtra la lista en vivo vía `searchProductos` (FTS5). Espejo del
+    /// `onQueryChange` de Android.
+    func onQueryChange(_ q: String) {
+        state.query = q
+        binder.setQuery(query: q)
     }
 
     /// Owner + collaborators for the detail header avatars + "N MIEMBROS".

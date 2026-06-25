@@ -1,6 +1,7 @@
 package ule.jescuj00.fridgey
 
 import android.app.Application
+import android.content.pm.ApplicationInfo
 import android.util.Log
 import com.google.firebase.FirebaseApp
 import kotlinx.coroutines.CoroutineScope
@@ -10,7 +11,11 @@ import org.koin.android.ext.koin.androidLogger
 import org.koin.core.context.startKoin
 import org.koin.core.qualifier.named
 import ule.jescuj00.fridgey.data.repository.AuthRepository
+import ule.jescuj00.fridgey.data.repository.NeveraRepository
+import ule.jescuj00.fridgey.data.repository.PreferenciasRepository
+import ule.jescuj00.fridgey.data.repository.ProductoRepository
 import ule.jescuj00.fridgey.data.sync.SyncManager
+import ule.jescuj00.fridgey.debug.sembrarNeverasMock
 import ule.jescuj00.fridgey.di.SYNC_SCOPE_QUALIFIER
 import ule.jescuj00.fridgey.di.androidModule
 import ule.jescuj00.fridgey.di.authBridgeModule
@@ -21,6 +26,7 @@ import ule.jescuj00.fridgey.domain.model.auth.AuthState
 import ule.jescuj00.fridgey.domain.notification.NotificacionCaducidadScheduler
 import ule.jescuj00.fridgey.domain.notification.RegistroTokenPush
 import ule.jescuj00.fridgey.notificaciones.CanalCaducidad
+import ule.jescuj00.fridgey.notificaciones.CanalColaboracion
 
 class FridgeyApplication : Application() {
 
@@ -34,8 +40,10 @@ class FridgeyApplication : Application() {
         FirebaseApp.initializeApp(this)
         Log.d("Fridgey", "Firebase initialized: ${FirebaseApp.getInstance().name}")
 
-        // Canal de notificación de avisos de caducidad (idempotente).
+        // Canales de notificación (idempotente): avisos de caducidad (local) y
+        // actividad de neveras compartidas (push colaborativo, HITO 4).
         CanalCaducidad.crear(this)
+        CanalColaboracion.crear(this)
 
         val koinApp = startKoin {
             androidLogger()
@@ -62,6 +70,12 @@ class FridgeyApplication : Application() {
                         // logout NO va aquí: lo hace SignOutUseCase ANTES de cerrar
                         // sesión, mientras aún hay auth para autorizar el delete.
                         syncScope.launch { registroToken.register(state.user.uid) }
+                        // Datos de demostración (SOLO debug): siembra las neveras
+                        // mock UNA vez por instalación. El flag persistente evita
+                        // que se repita en cada arranque o re-emisión de auth.
+                        if (esDebuggable) {
+                            syncScope.launch { sembrarDatosDemoSiHaceFalta(koin, state.user.uid) }
+                        }
                     }
                     AuthState.Unauthenticated -> syncManager.stop()
                     AuthState.Loading -> Unit
@@ -77,5 +91,26 @@ class FridgeyApplication : Application() {
         val scheduler = koin.get<NotificacionCaducidadScheduler>()
         scheduler.programarComprobacionDiaria()
         scheduler.comprobarAhora()
+    }
+
+    /** `true` si esta es una build debuggable (debug). Gate del seed de demo. */
+    private val esDebuggable: Boolean
+        get() = (applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
+
+    /**
+     * Siembra las neveras de demostración una única vez por instalación,
+     * protegido por el flag `datos_demo_sembrados`. Idempotente: si ya se
+     * sembró (o se reemite el estado Authenticated) no hace nada.
+     */
+    private suspend fun sembrarDatosDemoSiHaceFalta(koin: org.koin.core.Koin, uid: String) {
+        val preferencias = koin.get<PreferenciasRepository>()
+        if (preferencias.datosDemoSembrados()) return
+        sembrarNeverasMock(
+            uid = uid,
+            neveraRepository = koin.get<NeveraRepository>(),
+            productoRepository = koin.get<ProductoRepository>(),
+        )
+        preferencias.setDatosDemoSembrados()
+        Log.d("Fridgey", "Datos de demostración sembrados (Hogar + Casa de la playa)")
     }
 }

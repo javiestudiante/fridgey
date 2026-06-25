@@ -76,9 +76,25 @@ class PreferenciasRepository(
         }
     }
 
+    /**
+     * Si ya se han sembrado los datos de demostración (neveras mock). **Default
+     * `false`** (clave ausente = nunca sembrado). Lo usa el seed de debug del
+     * arranque para correr UNA sola vez y no volver a duplicar neveras en cada
+     * inicio. LOCAL ONLY — solo afecta a este dispositivo.
+     */
+    suspend fun datosDemoSembrados(): Boolean = withContext(Dispatchers.Default) {
+        queries.selectByClave(CLAVE_DATOS_DEMO).executeAsOneOrNull() == "true"
+    }
+
+    /** Marca que los datos de demostración ya se sembraron (no repetir). */
+    suspend fun setDatosDemoSembrados(): Unit = withContext(Dispatchers.Default) {
+        queries.upsert(clave = CLAVE_DATOS_DEMO, valor = "true")
+    }
+
     companion object {
         const val CLAVE_AVISOS_CADUCIDAD = "avisos_caducidad"
         const val CLAVE_PERMISO_NOTIF_SOLICITADO = "permiso_notif_solicitado"
         const val CLAVE_ID_INSTALACION = "id_instalacion"
+        const val CLAVE_DATOS_DEMO = "datos_demo_sembrados"
     }
 }

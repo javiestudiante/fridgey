@@ -1,5 +1,6 @@
 import SwiftUI
 import UIKit
+import Shared
 
 /// Pantalla de Ajustes (Fase 1b iOS). Hogar del toggle "Avisos de caducidad"
 /// (default ON). Se llega desde el icono de ajustes de la lista de neveras.
@@ -15,6 +16,7 @@ struct AjustesView: View {
                 if vm.permisoDenegado {
                     bannerPermiso
                 }
+                seccionPreferencias
             }
             .padding(16)
         }
@@ -49,6 +51,40 @@ struct AjustesView: View {
         .padding(16)
         .background(Color.fridgeySurfaceWhite, in: RoundedRectangle(cornerRadius: 16))
         .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.fridgeyHairline, lineWidth: 1))
+    }
+
+    /// Sección "Preferencias": cómo abre el botón "+" de una nevera el alta de
+    /// producto. Reutiliza el mismo SegmentedToggle que el Escanear/A mano de
+    /// AddProducto. Índice 0 = Manual, índice 1 = Escanear.
+    private var seccionPreferencias: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            EyebrowLabel(text: "PREFERENCIAS")
+            VStack(alignment: .leading, spacing: 12) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Al añadir productos")
+                        .font(.custom("Inter-Regular", size: 16).weight(.medium))
+                        .foregroundStyle(Color.fridgeyInk)
+                    Text("Qué abre el botón + de una nevera por defecto.")
+                        .font(.custom("Inter-Regular", size: 13))
+                        .italic()
+                        .foregroundStyle(Color.fridgeyInkMuted)
+                }
+                SegmentedToggle(
+                    options: [
+                        SegmentOption(label: "Manual"),
+                        SegmentOption(label: "Escanear"),
+                    ],
+                    selectedIndex: vm.modoAnadir == .manual ? 0 : 1,
+                    onSelect: { idx in
+                        Task { await vm.onModoAnadirSeleccionado(idx == 0 ? .manual : .escanear) }
+                    }
+                )
+            }
+            .padding(16)
+            .background(Color.fridgeySurfaceWhite, in: RoundedRectangle(cornerRadius: 16))
+            .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.fridgeyHairline, lineWidth: 1))
+        }
+        .padding(.top, 10)
     }
 
     private var bannerPermiso: some View {

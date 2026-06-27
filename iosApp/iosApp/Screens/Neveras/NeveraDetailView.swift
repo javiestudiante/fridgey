@@ -12,6 +12,10 @@ struct NeveraDetailView: View {
     /// El "Escanear" del empty state abre AddProducto con el escáner ya
     /// lanzado; "Añadir a mano" y el FAB abren el formulario normal.
     @State private var addSheetStartsScanning = false
+    /// Preferencia "modo de añadido por defecto" del botón "+". Se lee al entrar;
+    /// cambiarla requiere ir a Ajustes (fuera de esta nevera), así que al reabrir
+    /// la nevera el `.task` la refresca solo.
+    @State private var modoAnadir: ModoAnadirProducto = .manual
     @State private var pendingDelete: Producto?
     @State private var selectedCategory: Categoria?
     @State private var showCompartir = false
@@ -60,6 +64,9 @@ struct NeveraDetailView: View {
         // La barra oculta desactiva el swipe-back nativo; lo reactivamos sin
         // quitar la flecha custom (ambas vías de volver conviven).
         .enableSwipeBack()
+        .task {
+            modoAnadir = (try? await KoinIosKt.getPreferenciasRepository().modoAnadirProducto()) ?? .manual
+        }
         .sheet(isPresented: $showAddSheet, onDismiss: { addSheetStartsScanning = false }) {
             AddProductoView(
                 neveraId: neveraId,
@@ -717,7 +724,15 @@ struct NeveraDetailView: View {
 
     // iOS detail FAB: extended mint-deep "Añadir" (radius 20), per the iOS design.
     private var fab: some View {
-        Button(action: { showAddSheet = true }) {
+        Button(action: {
+            // Enruta según la preferencia: ESCANEAR abre AddProducto con el
+            // escáner ya lanzado (mismo flujo que el "Escanear" del empty state);
+            // MANUAL abre el formulario. Reutiliza el flujo existente, no lo duplica.
+            if modoAnadir == .escanear {
+                addSheetStartsScanning = true
+            }
+            showAddSheet = true
+        }) {
             HStack(spacing: 8) {
                 Image(systemName: "plus")
                 Text("Añadir").font(.custom("Inter-Regular", size: 15).weight(.medium))

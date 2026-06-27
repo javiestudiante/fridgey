@@ -25,6 +25,14 @@ target 'iosApp' do
   # their common FirebaseCore constraint.
   pod 'FirebaseFirestore'
 
+  # Cloud Functions — backs the callable invocations in shared (gitlive
+  # firebase-functions, e.g. EliminarCuentaUseCase / `eliminarCuenta`).
+  # Like FirebaseFirestore, its FIR* symbols (FIRFunctions,
+  # FIRHTTPSCallableResult) resolve at app link time against this pod;
+  # without it the linker fails with "Undefined symbol _OBJC_CLASS_$_FIRFunctions".
+  # Unpinned for the same release-train reason as FirebaseFirestore.
+  pod 'FirebaseFunctions'
+
   # Native Google Sign-In SDK — used by GoogleSignInBridge.swift to
   # produce an idToken that we hand to Firebase.
   pod 'GoogleSignIn'

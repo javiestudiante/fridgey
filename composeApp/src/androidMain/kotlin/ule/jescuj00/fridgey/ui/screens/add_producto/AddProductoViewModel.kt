@@ -52,6 +52,13 @@ data class AddProductoUiState(
      * scan/manual toggle in the UI.
      */
     val isFormPristine: Boolean = true,
+    /**
+     * `true` once [AddProductoViewModel.startEdit] has loaded an existing
+     * product into the form (UC-10). Drives the dynamic screen title and
+     * makes `onSavePressed` route to `updateProducto` instead of
+     * `insertProducto`. Stays `false` for the plain add flow.
+     */
+    val isEditing: Boolean = false,
 )
 
 private fun defaultExpiry(): LocalDate =
@@ -70,6 +77,58 @@ class AddProductoViewModel(
 
     private val _uiState = MutableStateFlow(AddProductoUiState(fechaCaducidad = initialExpiry))
     val uiState: StateFlow<AddProductoUiState> = _uiState.asStateFlow()
+
+    /**
+     * The product being edited (UC-10), or `null` in the plain add flow.
+     * Captured at [startEdit] and consulted at save time so the edited
+     * `Producto` carries forward the original `id`, `idNevera`,
+     * `fechaRegistro` AND `creadoPor` — none of which the form exposes.
+     * Critical for the Firestore push: `updateProducto` serializes the whole
+     * doc, so a null/blank `creadoPor` here would wipe the author in the
+     * cloud and break the collaborative-notification actor exclusion.
+     */
+    private var editing: Producto? = null
+
+    /**
+     * Synchronous re-entry guard for [startEdit]. The actual load is async,
+     * so this flips `true` immediately to ensure the one-shot fetch + prefill
+     * runs exactly once even if the host recomposes (or the process is
+     * restored) and calls `startEdit` again — re-loading would clobber the
+     * user's in-progress edits with the stored values.
+     */
+    private var editStarted = false
+
+    /**
+     * Switches the form into edit mode and pre-fills it with the current
+     * values of [productoId] (looked up within [neveraId]). Idempotent: the
+     * load runs only the first time (see [editStarted]). A missing product
+     * (deleted meanwhile) silently leaves the form in add mode.
+     */
+    fun startEdit(neveraId: String, productoId: String) {
+        if (editStarted) return
+        editStarted = true
+        viewModelScope.launch {
+            val producto = productoRepository.getProductosByNeveraOnce(neveraId)
+                .find { it.id == productoId } ?: return@launch
+            editing = producto
+            _uiState.update {
+                it.copy(
+                    name = producto.nombre,
+                    categoria = producto.categoria,
+                    fechaCaducidad = producto.fechaCaducidad,
+                    cantidad = producto.cantidad,
+                    unidad = producto.unidad,
+                    diasAvisoAntes = producto.diasAvisoAntes,
+                    codigoBarras = producto.codigoBarras,
+                    imagenUrl = producto.imagenUrl,
+                    isEditing = true,
+                    // Not pristine → hides the Escanear/A mano toggle, which
+                    // makes no sense when editing an existing product.
+                    isFormPristine = false,
+                )
+            }
+        }
+    }
 
     // -- Field setters: each guards `isFormPristine` against its field's default --
 
@@ -266,20 +325,39 @@ class AddProductoViewModel(
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true) }
             try {
-                val producto = Producto(
-                    id = Uuid.random().toString(),
-                    idNevera = neveraId,
-                    codigoBarras = state.codigoBarras,
-                    nombre = name,
-                    categoria = state.categoria,
-                    fechaCaducidad = state.fechaCaducidad,
-                    fechaRegistro = today,
-                    imagenUrl = state.imagenUrl,
-                    cantidad = state.cantidad,
-                    unidad = state.unidad,
-                    diasAvisoAntes = state.diasAvisoAntes,
-                )
-                productoRepository.insertProducto(producto)
+                val original = editing
+                if (original != null) {
+                    // EDICIÓN (UC-10): partir del producto original con `.copy`
+                    // conserva id, idNevera, fechaRegistro Y creadoPor intactos
+                    // (el formulario no expone ninguno) — sólo se sobrescriben
+                    // los campos editables. Esto satisface el invariante: el
+                    // autor original viaja entero en el push a Firestore.
+                    val actualizado = original.copy(
+                        nombre = name,
+                        categoria = state.categoria,
+                        fechaCaducidad = state.fechaCaducidad,
+                        imagenUrl = state.imagenUrl,
+                        cantidad = state.cantidad,
+                        unidad = state.unidad,
+                        diasAvisoAntes = state.diasAvisoAntes,
+                    )
+                    productoRepository.updateProducto(actualizado)
+                } else {
+                    val producto = Producto(
+                        id = Uuid.random().toString(),
+                        idNevera = neveraId,
+                        codigoBarras = state.codigoBarras,
+                        nombre = name,
+                        categoria = state.categoria,
+                        fechaCaducidad = state.fechaCaducidad,
+                        fechaRegistro = today,
+                        imagenUrl = state.imagenUrl,
+                        cantidad = state.cantidad,
+                        unidad = state.unidad,
+                        diasAvisoAntes = state.diasAvisoAntes,
+                    )
+                    productoRepository.insertProducto(producto)
+                }
                 _uiState.update { it.copy(isLoading = false, success = true) }
             } catch (e: Exception) {
                 _uiState.update {

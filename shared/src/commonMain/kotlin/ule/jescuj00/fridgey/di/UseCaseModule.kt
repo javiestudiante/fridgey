@@ -22,6 +22,7 @@ import ule.jescuj00.fridgey.domain.usecase.RemoveColaboradorUseCase
 import ule.jescuj00.fridgey.domain.usecase.SalirDeNeveraUseCase
 import ule.jescuj00.fridgey.domain.usecase.ScanExpirationDateUseCase
 import ule.jescuj00.fridgey.domain.usecase.SubirANubeUseCase
+import ule.jescuj00.fridgey.domain.usecase.auth.EliminarCuentaUseCase
 import ule.jescuj00.fridgey.domain.usecase.auth.ObserveAuthStateUseCase
 import ule.jescuj00.fridgey.domain.usecase.auth.SignInWithAppleUseCase
 import ule.jescuj00.fridgey.domain.usecase.auth.SignInWithGoogleUseCase
@@ -65,4 +66,5 @@ val useCaseModule: Module = module {
     factory { SignInWithAppleUseCase(get(), get()) }
     factory { SignOutUseCase(get(), get()) }
     factory { ObserveAuthStateUseCase(get()) }
+    factory { EliminarCuentaUseCase(get(), get(), get(named(SYNC_SCOPE_QUALIFIER))) }
 }

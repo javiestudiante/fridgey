@@ -34,6 +34,7 @@ import ule.jescuj00.fridgey.domain.usecase.RemoveColaboradorUseCase
 import ule.jescuj00.fridgey.domain.usecase.SalirDeNeveraUseCase
 import ule.jescuj00.fridgey.domain.usecase.ScanExpirationDateUseCase
 import ule.jescuj00.fridgey.domain.usecase.SubirANubeUseCase
+import ule.jescuj00.fridgey.domain.usecase.auth.EliminarCuentaUseCase
 import ule.jescuj00.fridgey.domain.usecase.auth.ObserveAuthStateUseCase
 import ule.jescuj00.fridgey.domain.usecase.auth.SignInWithAppleUseCase
 import ule.jescuj00.fridgey.domain.usecase.auth.SignInWithGoogleUseCase
@@ -91,6 +92,7 @@ fun getSignInWithGoogleUseCase(): SignInWithGoogleUseCase = KoinAccessor.get()
 fun getSignInWithAppleUseCase(): SignInWithAppleUseCase = KoinAccessor.get()
 fun getSignOutUseCase(): SignOutUseCase = KoinAccessor.get()
 fun getObserveAuthStateUseCase(): ObserveAuthStateUseCase = KoinAccessor.get()
+fun getEliminarCuentaUseCase(): EliminarCuentaUseCase = KoinAccessor.get()
 
 /** Fresh binder per call — each Swift subscriber owns its coroutine scope. */
 fun getAuthStateBinder(): AuthStateBinder = KoinAccessor.get()

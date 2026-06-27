@@ -73,9 +73,15 @@ class FridgeyApplication : Application() {
                         // Datos de demostración (SOLO debug): siembra las neveras
                         // mock UNA vez por instalación. El flag persistente evita
                         // que se repita en cada arranque o re-emisión de auth.
-                        if (esDebuggable) {
-                            syncScope.launch { sembrarDatosDemoSiHaceFalta(koin, state.user.uid) }
-                        }
+                        //
+                        // DESACTIVADO: el borrado de cuenta (RGPD) vacía la tabla
+                        // Preferencia, reseteando el flag `datos_demo_sembrados`, así
+                        // que tras eliminar cuenta y re-loguear se volvían a sembrar
+                        // las dos neveras mock. Se deja el seed escrito pero sin
+                        // invocar; reactívalo descomentando si lo necesitas en debug.
+                        // if (esDebuggable) {
+                        //     syncScope.launch { sembrarDatosDemoSiHaceFalta(koin, state.user.uid) }
+                        // }
                     }
                     AuthState.Unauthenticated -> syncManager.stop()
                     AuthState.Loading -> Unit

@@ -17,6 +17,9 @@ struct NeveraDetailView: View {
     /// la nevera el `.task` la refresca solo.
     @State private var modoAnadir: ModoAnadirProducto = .manual
     @State private var pendingDelete: Producto?
+    /// Producto en edición (UC-10): no-nil presenta `AddProductoView` en modo
+    /// edición vía `.sheet(item:)`. `Producto` ya es `Identifiable`.
+    @State private var editingProducto: Producto?
     @State private var selectedCategory: Categoria?
     @State private var showCompartir = false
     @State private var navInvitar = false
@@ -72,6 +75,16 @@ struct NeveraDetailView: View {
                 neveraId: neveraId,
                 onCompleted: { showAddSheet = false },
                 startScanning: addSheetStartsScanning
+            )
+        }
+        // Edición (UC-10): reutiliza AddProductoView pre-rellenado con el
+        // producto. El objeto va entero (sheet en memoria), preservando
+        // id/idNevera/fechaRegistro/creadoPor en el guardado.
+        .sheet(item: $editingProducto) { producto in
+            AddProductoView(
+                neveraId: neveraId,
+                onCompleted: { editingProducto = nil },
+                editingProducto: producto
             )
         }
         .alert("Eliminar producto",
@@ -543,7 +556,21 @@ struct NeveraDetailView: View {
                     daysRemaining: Int(producto.diasRestantes)
                 )
                 .contentShape(Rectangle())
-                .onLongPressGesture { pendingDelete = producto }
+                // Menú contextual al tocar/mantener: Editar abre el formulario
+                // en modo edición; Eliminar reusa el alert destructivo existente
+                // (no se duplica la confirmación de borrado).
+                .contextMenu {
+                    Button {
+                        editingProducto = producto
+                    } label: {
+                        Label("Editar", systemImage: "pencil")
+                    }
+                    Button(role: .destructive) {
+                        pendingDelete = producto
+                    } label: {
+                        Label("Eliminar", systemImage: "trash")
+                    }
+                }
             }
         }
         .background(Color.fridgeySurfaceWhite)

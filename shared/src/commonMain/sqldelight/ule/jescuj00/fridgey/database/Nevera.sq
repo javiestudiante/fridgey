@@ -55,3 +55,7 @@ UPDATE Nevera SET nombre = ?, id_propietario = ?, updated_at = ? WHERE id = ?;
 insertOrIgnoreFromRemote:
 INSERT OR IGNORE INTO Nevera (id, nombre, id_propietario, fecha_creacion, modo, updated_at)
 VALUES (?, ?, ?, ?, 'SYNCED', NULL);
+
+-- Wipe total de la tabla (borrado de cuenta — RGPD).
+deleteAll:
+DELETE FROM Nevera;

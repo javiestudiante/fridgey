@@ -111,7 +111,7 @@ fun AddProductoScreen(
         // devices was failing to take taps reliably under the
         // `ScreenHeader` Row layout).
         ScreenHeader(
-            title = "Añadir producto",
+            title = if (state.isEditing) "Editar producto" else "Añadir producto",
             leading = {
                 TextButton(onClick = onNavigateBack) {
                     Text(

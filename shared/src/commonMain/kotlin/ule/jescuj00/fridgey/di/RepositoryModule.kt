@@ -11,6 +11,7 @@ import org.koin.core.qualifier.named
 import org.koin.dsl.module
 import ule.jescuj00.fridgey.data.remote.firestore.NeveraRemoteRepository
 import ule.jescuj00.fridgey.data.repository.AuthRepository
+import ule.jescuj00.fridgey.data.repository.BorradoLocalRepository
 import ule.jescuj00.fridgey.data.repository.NeveraRepository
 import ule.jescuj00.fridgey.data.repository.PreferenciasRepository
 import ule.jescuj00.fridgey.data.repository.ProductoRepository
@@ -61,6 +62,9 @@ val repositoryModule: Module = module {
 
     // LOCAL key/value store (toggle "Avisos de caducidad", Fase 1). No sync.
     single { PreferenciasRepository(get()) }
+
+    // Wipe total del espejo local (borrado de cuenta — RGPD).
+    single { BorradoLocalRepository(get()) }
 
     single { SyncManager(get(), get(), get()) }
 }

@@ -10,9 +10,16 @@ sealed class Screen(val route: String) {
         fun createRoute(neveraId: String) = "nevera_detail/$neveraId"
     }
 
-    data object AddProducto : Screen("add_producto/{neveraId}") {
+    data object AddProducto : Screen("add_producto/{neveraId}?productoId={productoId}") {
         const val ARG_NEVERA_ID = "neveraId"
+        const val ARG_PRODUCTO_ID = "productoId"
+
+        /** Alta: sin `productoId` (la query queda ausente → arg null). */
         fun createRoute(neveraId: String) = "add_producto/$neveraId"
+
+        /** Edición (UC-10): mismo destino con el `productoId` a pre-rellenar. */
+        fun createEditRoute(neveraId: String, productoId: String) =
+            "add_producto/$neveraId?productoId=$productoId"
     }
 
     data object DateScanner : Screen("date_scanner")

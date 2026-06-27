@@ -14,3 +14,7 @@ VALUES (?, ?);
 
 selectByClave:
 SELECT valor FROM Preferencia WHERE clave = ?;
+
+-- Wipe total de la tabla (borrado de cuenta — RGPD).
+deleteAll:
+DELETE FROM Preferencia;

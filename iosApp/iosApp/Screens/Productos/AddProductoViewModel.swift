@@ -40,6 +40,11 @@ final class AddProductoViewModel: ObservableObject {
         var scanMode: ScanMode = .manual
         /// One-way pristine flag — see class doc.
         var isFormPristine: Bool = true
+        /// `true` once the form was seeded from an existing product (UC-10).
+        /// Drives the dynamic screen title and makes `onSavePressed` route to
+        /// `updateProducto` instead of `insertProducto`. `false` in the plain
+        /// add flow. Mirrors Android's `AddProductoUiState.isEditing`.
+        var isEditing: Bool = false
     }
 
     @Published private(set) var state: State
@@ -49,14 +54,44 @@ final class AddProductoViewModel: ObservableObject {
     /// edge case where two `defaultExpiry()` calls could disagree).
     private let initialExpiry: Kotlinx_datetimeLocalDate
 
+    /// The product being edited (UC-10), or `nil` in the plain add flow.
+    /// Captured at construction and consulted at save time so the edited
+    /// `Producto` carries forward the original `id`, `idNevera`,
+    /// `fechaRegistro` AND `creadoPor` — none of which the form exposes.
+    /// CRÍTICO: a `nil`/blank `creadoPor` here would wipe the author in
+    /// Firestore (the push serializes the whole doc) and break the
+    /// collaborative-notification actor exclusion.
+    private let editing: Producto?
+
     private let productoRepository = KoinIosKt.getProductoRepository()
 
-    init() {
+    /// - Parameter editingProducto: when non-nil, the form opens in edit mode
+    ///   pre-filled with ALL of its fields (a partial prefill would leave the
+    ///   untouched fields at their defaults). Mirrors Android's `startEdit`.
+    init(editingProducto: Producto? = nil) {
         let today = Date()
         let inSevenDays = Calendar.current.date(byAdding: .day, value: 7, to: today) ?? today
         let expiry = Kotlinx_datetimeLocalDate.from(date: inSevenDays)
         self.initialExpiry = expiry
-        self.state = State(fechaCaducidad: expiry)
+        self.editing = editingProducto
+        if let p = editingProducto {
+            self.state = State(
+                name: p.nombre,
+                categoria: p.categoria,
+                fechaCaducidad: p.fechaCaducidad,
+                cantidad: p.cantidad,
+                unidad: p.unidad,
+                diasAvisoAntes: Int(p.diasAvisoAntes),
+                codigoBarras: p.codigoBarras,
+                imagenUrl: p.imagenUrl,
+                // Not pristine → hides the Escanear/A mano toggle, which makes
+                // no sense when editing an existing product.
+                isFormPristine: false,
+                isEditing: true
+            )
+        } else {
+            self.state = State(fechaCaducidad: expiry)
+        }
     }
 
     // MARK: - Field setters (each guards `isFormPristine` against its default)
@@ -185,21 +220,46 @@ final class AddProductoViewModel: ObservableObject {
         Task { @MainActor [weak self] in
             guard let self = self else { return }
             do {
-                let producto = Producto(
-                    id: UUID().uuidString,
-                    idNevera: neveraId,
-                    codigoBarras: snapshot.codigoBarras,
-                    nombre: trimmed,
-                    categoria: categoria,
-                    fechaCaducidad: fechaCaducidad,
-                    fechaRegistro: Kotlinx_datetimeLocalDate.from(date: todayDate),
-                    imagenUrl: snapshot.imagenUrl,
-                    cantidad: cantidad,
-                    unidad: unidad,
-                    diasAvisoAntes: diasAvisoAntes,
-                    creadoPor: nil
-                )
-                try await self.productoRepository.insertProducto(producto: producto)
+                if let original = self.editing {
+                    // EDICIÓN (UC-10): se reconstruye el Producto a partir del
+                    // ORIGINAL — id, idNevera, fechaRegistro, codigoBarras,
+                    // imagenUrl Y creadoPor se copian tal cual (el formulario no
+                    // expone ninguno); sólo se sobrescriben los campos
+                    // editables. INVARIANTE: creadoPor mantiene el autor
+                    // original (NUNCA nil), de modo que el push a Firestore no
+                    // borra el autor al serializar el doc.
+                    let actualizado = Producto(
+                        id: original.id,
+                        idNevera: original.idNevera,
+                        codigoBarras: original.codigoBarras,
+                        nombre: trimmed,
+                        categoria: categoria,
+                        fechaCaducidad: fechaCaducidad,
+                        fechaRegistro: original.fechaRegistro,
+                        imagenUrl: original.imagenUrl,
+                        cantidad: cantidad,
+                        unidad: unidad,
+                        diasAvisoAntes: diasAvisoAntes,
+                        creadoPor: original.creadoPor
+                    )
+                    try await self.productoRepository.updateProducto(producto: actualizado)
+                } else {
+                    let producto = Producto(
+                        id: UUID().uuidString,
+                        idNevera: neveraId,
+                        codigoBarras: snapshot.codigoBarras,
+                        nombre: trimmed,
+                        categoria: categoria,
+                        fechaCaducidad: fechaCaducidad,
+                        fechaRegistro: Kotlinx_datetimeLocalDate.from(date: todayDate),
+                        imagenUrl: snapshot.imagenUrl,
+                        cantidad: cantidad,
+                        unidad: unidad,
+                        diasAvisoAntes: diasAvisoAntes,
+                        creadoPor: nil
+                    )
+                    try await self.productoRepository.insertProducto(producto: producto)
+                }
                 self.state.isLoading = false
                 self.state.success = true
             } catch {

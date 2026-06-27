@@ -49,6 +49,8 @@ kotlin {
             api(libs.gitlive.firebase.common)
             // Firestore vía GitLive para neveras SHARED.
             api(libs.gitlive.firebase.firestore)
+            // Cloud Functions callables vía GitLive (eliminar cuenta — RGPD).
+            api(libs.gitlive.firebase.functions)
         }
         androidMain.dependencies {
             implementation(libs.sqldelight.android.driver)

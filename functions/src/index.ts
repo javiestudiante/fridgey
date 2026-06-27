@@ -198,8 +198,17 @@ export const onProductoAnadido = onDocumentCreated(
 //    GUARD (antes de tocar nada): una nevera PROPIA con ≥1 colaborador (compartida)
 //    BLOQUEA el borrado entero. No existe "transferir propiedad" en el proyecto, así
 //    que borrarla dejaría a los colaboradores sin acceso de golpe: se exige que el
-//    usuario las resuelva primero. Se devuelven sus {id, nombre} para que el cliente
-//    las liste.
+//    usuario las resuelva primero.
+//
+//    CONTRATO de retorno (NO se usa HttpsError para el guard, a propósito): el SDK
+//    cliente GitLive 2.1.0 NO propaga a iOS ni el `code` ni los `details` de un
+//    HttpsError (quedan como UNKNOWN / null por el bug firebase-ios-sdk #11862). Por
+//    eso el conflicto viaja en el PAYLOAD NORMAL del resultado, legible idéntico en
+//    Android e iOS vía `result.data<T>()`:
+//      - bloqueado:  { ok: false, neveras: [{ id, nombre }, ...] }   (no borra nada)
+//      - completado: { ok: true,  neveras: [] }
+//    El único throw que queda es 'unauthenticated' (no debería ocurrir: el cliente
+//    siempre llama autenticado; si ocurre, el cliente lo trata como error genérico).
 //
 //    Sobre `miembros[].fotoUrl`: NO es un blob propio. Es la URL del avatar del
 //    proveedor OAuth (Google/Apple); el proyecto no usa Firebase Storage. No hay
@@ -227,18 +236,17 @@ export const eliminarCuenta = onCall(async (request) => {
   ]);
 
   // 3. GUARD: de las propias, las compartidas (≥1 colaborador; el array excluye al
-  //    dueño, así que length>0 == compartida) bloquean. No se borra NADA si hay alguna.
+  //    dueño, así que length>0 == compartida) bloquean. No se borra NADA si hay alguna:
+  //    se devuelve la lista en el payload (ver CONTRATO arriba), no como HttpsError.
   const compartidas = propiasSnap.docs.filter((d) => {
     const colab = d.get("colaboradores");
     return Array.isArray(colab) && colab.length > 0;
   });
   if (compartidas.length > 0) {
-    const detalle = compartidas.map((d) => ({ id: d.id, nombre: d.get("nombre") ?? "" }));
-    throw new HttpsError(
-      "failed-precondition",
-      "Tienes neveras compartidas. Elimina esas neveras primero.",
-      detalle,
-    );
+    return {
+      ok: false,
+      neveras: compartidas.map((d) => ({ id: d.id, nombre: d.get("nombre") ?? "" })),
+    };
   }
 
   // 4. Neveras propias en solitario → recursiveDelete (arrastra la subcolección
@@ -251,7 +259,7 @@ export const eliminarCuenta = onCall(async (request) => {
   //    fresco, sin pisar cambios concurrentes de otros miembros (read-modify-write
   //    seguro). `colaboradores` es array de strings → arrayRemove(uid); `miembros`
   //    es array de objetos → se filtra mi objeto por uid (RGPD: se borra también el
-  //    perfil denormalizado). Esto dispara onMembresiaCambiada → aviso de "auto-salida"
+  //    perfil denormalizado). Esto dispara onMembresiaCambiada (deliberado previamente) → aviso de "auto-salida"
   //    a los que quedan; es el comportamiento esperado al abandonar una nevera.
   await Promise.all(
     colaborandoSnap.docs.map((d) =>
@@ -281,6 +289,6 @@ export const eliminarCuenta = onCall(async (request) => {
   }
 
   logger.info(`eliminarCuenta: cuenta ${uid} eliminada (RGPD).`);
-  // 8.
-  return { ok: true };
+  // 8. Completado (ver CONTRATO arriba).
+  return { ok: true, neveras: [] };
 });

@@ -6,6 +6,7 @@ import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -17,6 +18,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -38,6 +41,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.app.ActivityCompat
 import androidx.lifecycle.Lifecycle
@@ -72,6 +76,7 @@ fun AjustesScreen(
     var permisoConcedido by remember { mutableStateOf(tienePermisoNotificaciones(context)) }
     var solicitado by remember { mutableStateOf(false) }
     var denegadoPermanente by remember { mutableStateOf(false) }
+    var showConfirmEliminar by remember { mutableStateOf(false) }
 
     fun recomputarEstadoPermiso() {
         permisoConcedido = tienePermisoNotificaciones(context)
@@ -159,6 +164,111 @@ fun AjustesScreen(
                 modo = state.modoAnadir,
                 onSeleccionar = viewModel::onModoAnadirSeleccionado,
             )
+
+            // Sección "Cuenta": acción destructiva de borrado de cuenta (RGPD).
+            Spacer(Modifier.height(28.dp))
+            EyebrowLabel(text = "CUENTA")
+            Spacer(Modifier.height(12.dp))
+            EliminarCuentaFila(
+                eliminando = state.eliminandoCuenta,
+                onClick = { showConfirmEliminar = true },
+            )
+        }
+    }
+
+    // --- Diálogo de confirmación fuerte (irreversibilidad) ---
+    if (showConfirmEliminar) {
+        AlertDialog(
+            onDismissRequest = { showConfirmEliminar = false },
+            title = { Text("¿Eliminar tu cuenta?") },
+            text = {
+                Text(
+                    "Esta acción es permanente y no se puede deshacer. Se eliminarán tu " +
+                        "cuenta, tus neveras en solitario y sus productos. Saldrás de las " +
+                        "neveras compartidas de otras personas.",
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    showConfirmEliminar = false
+                    viewModel.onEliminarCuentaConfirmado()
+                }) {
+                    Text("Eliminar", color = Rust)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showConfirmEliminar = false }) { Text("Cancelar") }
+            },
+        )
+    }
+
+    // --- Bloqueo: neveras compartidas a resolver primero ---
+    state.neverasBloqueadas?.let { neveras ->
+        AlertDialog(
+            onDismissRequest = viewModel::onDismissBloqueo,
+            title = { Text("Tienes neveras compartidas") },
+            text = {
+                Column {
+                    Text(
+                        "Para eliminar tu cuenta, primero elimina estas neveras compartidas:",
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    neveras.forEach { nevera ->
+                        Text(
+                            text = "• ${nevera.nombre.ifBlank { "Nevera" }}",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = Ink,
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = viewModel::onDismissBloqueo) { Text("Entendido") }
+            },
+        )
+    }
+
+    // --- Error legible del borrado ---
+    state.errorEliminarCuenta?.let { mensaje ->
+        AlertDialog(
+            onDismissRequest = viewModel::onDismissErrorEliminar,
+            title = { Text("No se pudo eliminar la cuenta") },
+            text = { Text(mensaje) },
+            confirmButton = {
+                TextButton(onClick = viewModel::onDismissErrorEliminar) { Text("OK") }
+            },
+        )
+    }
+}
+
+/** Fila destructiva "Eliminar cuenta" (rojo). Muestra progreso mientras está en curso. */
+@Composable
+private fun EliminarCuentaFila(
+    eliminando: Boolean,
+    onClick: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(enabled = !eliminando, onClick = onClick)
+            .padding(vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = "Eliminar cuenta",
+                style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
+                color = Rust,
+            )
+            Text(
+                text = "Borra tu cuenta y tus datos de forma permanente.",
+                style = MaterialTheme.typography.bodySmall.copy(fontStyle = FontStyle.Italic),
+                color = InkSoft,
+            )
+        }
+        if (eliminando) {
+            Spacer(Modifier.size(12.dp))
+            CircularProgressIndicator(modifier = Modifier.size(20.dp), color = Rust, strokeWidth = 2.dp)
         }
     }
 }

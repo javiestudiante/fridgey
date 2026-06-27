@@ -20,3 +20,7 @@ DELETE FROM ProductoCache WHERE codigo_barras = ?;
 -- Purge entries older than a given timestamp (cache invalidation)
 deleteExpired:
 DELETE FROM ProductoCache WHERE fecha_consulta < ?;
+
+-- Wipe total de la tabla (borrado de cuenta — RGPD).
+deleteAll:
+DELETE FROM ProductoCache;

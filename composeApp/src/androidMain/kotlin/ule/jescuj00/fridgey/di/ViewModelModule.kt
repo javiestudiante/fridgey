@@ -31,6 +31,6 @@ fun viewModelModule(): Module = module {
     viewModel { UnirseViewModel(get()) }
     // get() resolves ScanExpirationDateUseCase, BarcodeScanner, LookupProductByBarcodeUseCase
     viewModel { DateScannerViewModel(get(), get(), get()) }
-    // get() resolves PreferenciasRepository + NotificacionCaducidadScheduler
-    viewModel { AjustesViewModel(get(), get()) }
+    // get() resolves PreferenciasRepository + NotificacionCaducidadScheduler + EliminarCuentaUseCase
+    viewModel { AjustesViewModel(get(), get(), get()) }
 }

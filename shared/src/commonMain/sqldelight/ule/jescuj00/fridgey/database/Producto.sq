@@ -169,3 +169,9 @@ marcarAvisado:
 UPDATE Producto
 SET fecha_caducidad_ultimo_aviso = ?
 WHERE id = ?;
+
+-- Wipe total de la tabla (borrado de cuenta — RGPD). El DELETE sin WHERE dispara
+-- el trigger Producto_fts_ad por fila (SQLite desactiva la optimización truncate
+-- cuando hay triggers), manteniendo el índice externo ProductoFts consistente.
+deleteAll:
+DELETE FROM Producto;

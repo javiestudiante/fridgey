@@ -165,7 +165,12 @@ private fun AuthenticatedGraph(
                 },
                 onNavigateToInvitar = {
                     navController.navigate(Screen.Invitar.createRoute(neveraId))
-                }
+                },
+                onNavigateToEditProducto = { producto ->
+                    navController.navigate(
+                        Screen.AddProducto.createEditRoute(neveraId, producto.id)
+                    )
+                },
             )
         }
 
@@ -202,18 +207,32 @@ private fun AuthenticatedGraph(
         composable(
             route = Screen.AddProducto.route,
             arguments = listOf(
-                navArgument(Screen.AddProducto.ARG_NEVERA_ID) { type = NavType.StringType }
+                navArgument(Screen.AddProducto.ARG_NEVERA_ID) { type = NavType.StringType },
+                navArgument(Screen.AddProducto.ARG_PRODUCTO_ID) {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                },
             )
         ) { backStackEntry ->
             val neveraId = requireNotNull(
                 backStackEntry.arguments?.getString(Screen.AddProducto.ARG_NEVERA_ID)
             )
+            // Presente sólo en el flujo de edición (UC-10); null en alta.
+            val productoId =
+                backStackEntry.arguments?.getString(Screen.AddProducto.ARG_PRODUCTO_ID)
 
             // Resolve the VM at the NavHost level (still scoped per
             // NavBackStackEntry by Koin). This lets the LaunchedEffect below
             // call onScannedDateReceived directly, instead of plumbing the
             // date through the screen as another parameter.
             val viewModel: AddProductoViewModel = koinViewModel()
+
+            // Edición: carga el producto y pre-rellena el formulario una sola
+            // vez (startEdit es idempotente; sobrevive a recomposición/proceso).
+            LaunchedEffect(productoId) {
+                if (productoId != null) viewModel.startEdit(neveraId, productoId)
+            }
 
             // Receive ISO date string from the scanner via savedStateHandle.
             val savedStateHandle = backStackEntry.savedStateHandle

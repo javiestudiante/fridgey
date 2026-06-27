@@ -10,17 +10,28 @@ import kotlinx.coroutines.launch
 import ule.jescuj00.fridgey.data.repository.PreferenciasRepository
 import ule.jescuj00.fridgey.domain.model.ModoAnadirProducto
 import ule.jescuj00.fridgey.domain.notification.NotificacionCaducidadScheduler
+import ule.jescuj00.fridgey.domain.usecase.auth.EliminarCuentaUseCase
+import ule.jescuj00.fridgey.domain.usecase.auth.NeveraBloqueada
+import ule.jescuj00.fridgey.domain.usecase.auth.ResultadoEliminarCuenta
 
 data class AjustesUiState(
     // Refleja la INTENCIÓN del usuario (la preferencia), no el permiso del SO.
     val avisosCaducidad: Boolean = true,
     // Modo con el que el botón "+" de una nevera abre el alta de producto.
     val modoAnadir: ModoAnadirProducto = ModoAnadirProducto.DEFAULT,
+    // --- Eliminación de cuenta ---
+    // En curso (deshabilita la UI y muestra progreso).
+    val eliminandoCuenta: Boolean = false,
+    // No-null → diálogo de bloqueo con las neveras compartidas a resolver primero.
+    val neverasBloqueadas: List<NeveraBloqueada>? = null,
+    // No-null → mensaje de error legible del borrado.
+    val errorEliminarCuenta: String? = null,
 )
 
 class AjustesViewModel(
     private val preferenciasRepository: PreferenciasRepository,
     private val scheduler: NotificacionCaducidadScheduler,
+    private val eliminarCuentaUseCase: EliminarCuentaUseCase,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(AjustesUiState())
@@ -78,5 +89,40 @@ class AjustesViewModel(
             preferenciasRepository.setPermisoNotifSolicitado(true)
             if (concedido) scheduler.comprobarAhora()
         }
+    }
+
+    /**
+     * Confirma la eliminación de cuenta (RGPD). Server-authoritative: invoca la
+     * callable y reacciona al resultado. En [ResultadoEliminarCuenta.Exito] el
+     * propio caso de uso ya cerró sesión y borró el espejo local; la navegación a
+     * login la dispara automáticamente el observador de estado de auth (no hay que
+     * navegar aquí), así que esta pantalla se desmonta sola. No se limpia
+     * `eliminandoCuenta` en el caso de éxito a propósito: mantiene la UI bloqueada
+     * durante el breve instante hasta el cambio de grafo.
+     */
+    fun onEliminarCuentaConfirmado() {
+        if (_uiState.value.eliminandoCuenta) return
+        _uiState.update { it.copy(eliminandoCuenta = true, errorEliminarCuenta = null) }
+        viewModelScope.launch {
+            when (val resultado = eliminarCuentaUseCase()) {
+                is ResultadoEliminarCuenta.Exito -> Unit // la nav a login se encarga
+                is ResultadoEliminarCuenta.Bloqueada ->
+                    _uiState.update {
+                        it.copy(eliminandoCuenta = false, neverasBloqueadas = resultado.neveras)
+                    }
+                is ResultadoEliminarCuenta.Error ->
+                    _uiState.update {
+                        it.copy(eliminandoCuenta = false, errorEliminarCuenta = resultado.mensaje)
+                    }
+            }
+        }
+    }
+
+    fun onDismissBloqueo() {
+        _uiState.update { it.copy(neverasBloqueadas = null) }
+    }
+
+    fun onDismissErrorEliminar() {
+        _uiState.update { it.copy(errorEliminarCuenta = null) }
     }
 }

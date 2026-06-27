@@ -5,7 +5,6 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -114,9 +113,12 @@ fun NeveraDetailScreen(
     onNavigateToAddProducto: () -> Unit,
     onNavigateToScan: () -> Unit,
     onNavigateToInvitar: () -> Unit,
+    onNavigateToEditProducto: (Producto) -> Unit,
     viewModel: NeveraDetailViewModel = koinViewModel()
 ) {
     val state by viewModel.uiState.collectAsState()
+    // Producto cuyo menú de acciones (Editar / Eliminar) está abierto.
+    var pendingMenu by remember { mutableStateOf<Producto?>(null) }
     var pendingDelete by remember { mutableStateOf<Producto?>(null) }
     var selectedCategory by remember { mutableStateOf<Categoria?>(null) }
     var showCompartir by remember { mutableStateOf(false) }
@@ -190,7 +192,7 @@ fun NeveraDetailScreen(
                 query = state.query,
                 onQueryChange = viewModel::onQueryChange,
                 onBack = onNavigateBack,
-                onLongPressDelete = { pendingDelete = it },
+                onProductoClick = { pendingMenu = it },
                 mostrarCompartir = true,
                 onCompartir = { showCompartir = true },
                 onMiembros = { showMiembros = true },
@@ -222,6 +224,24 @@ fun NeveraDetailScreen(
                 Text("Añadir", style = TextStyle(fontFamily = Inter, fontWeight = FontWeight.Medium, fontSize = 15.sp))
             }
         }
+    }
+
+    // Menú de acciones del producto (al tocarlo): Editar / Eliminar. El
+    // borrado NO se ejecuta aquí — abre el diálogo de confirmación que ya
+    // existe (pendingDelete), de modo que sigue detrás de su confirmación.
+    pendingMenu?.let { producto ->
+        ProductoAccionesSheet(
+            producto = producto,
+            onDismiss = { pendingMenu = null },
+            onEditar = {
+                pendingMenu = null
+                onNavigateToEditProducto(producto)
+            },
+            onEliminar = {
+                pendingMenu = null
+                pendingDelete = producto
+            },
+        )
     }
 
     pendingDelete?.let { producto ->
@@ -769,6 +789,59 @@ private fun MiembroChip(label: String) {
     )
 }
 
+/**
+ * Hoja de acciones de un producto (se abre al tocarlo): Editar y Eliminar.
+ * No ejecuta el borrado directamente — `onEliminar` abre el diálogo de
+ * confirmación destructiva existente, manteniendo esa salvaguarda.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ProductoAccionesSheet(
+    producto: Producto,
+    onDismiss: () -> Unit,
+    onEditar: () -> Unit,
+    onEliminar: () -> Unit,
+) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        containerColor = Cream,
+    ) {
+        Column(Modifier.padding(horizontal = 22.dp)) {
+            Text(
+                text = producto.nombre,
+                style = TextStyle(
+                    fontFamily = InstrumentSerif, fontSize = 26.sp,
+                    letterSpacing = (-0.4).sp,
+                ),
+                color = Ink,
+            )
+            Spacer(Modifier.height(2.dp))
+            Text(
+                text = "¿Qué quieres hacer con este producto?",
+                style = TextStyle(fontFamily = Inter, fontSize = 13.sp),
+                color = InkMuted,
+            )
+            Spacer(Modifier.height(12.dp))
+            ProductoAccionRow(label = "Editar", color = Ink, onClick = onEditar)
+            ProductoAccionRow(label = "Eliminar", color = Rust, onClick = onEliminar)
+            Spacer(Modifier.height(16.dp).navigationBarsPadding())
+        }
+    }
+}
+
+@Composable
+private fun ProductoAccionRow(label: String, color: Color, onClick: () -> Unit) {
+    Text(
+        text = label,
+        style = TextStyle(fontFamily = Inter, fontWeight = FontWeight.SemiBold, fontSize = 16.sp),
+        color = color,
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(vertical = 14.dp),
+    )
+}
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun DetailContent(
@@ -778,7 +851,7 @@ private fun DetailContent(
     query: String,
     onQueryChange: (String) -> Unit,
     onBack: () -> Unit,
-    onLongPressDelete: (Producto) -> Unit,
+    onProductoClick: (Producto) -> Unit,
     mostrarCompartir: Boolean,
     onCompartir: () -> Unit,
     onMiembros: () -> Unit,
@@ -826,9 +899,9 @@ private fun DetailContent(
             )
         }
 
-        urgencySection(this, "Caduca ya", Rust, bad, onLongPressDelete)
-        urgencySection(this, "Esta semana", Amber, warn, onLongPressDelete)
-        urgencySection(this, "Más adelante", Ink, fresh, onLongPressDelete)
+        urgencySection(this, "Caduca ya", Rust, bad, onProductoClick)
+        urgencySection(this, "Esta semana", Amber, warn, onProductoClick)
+        urgencySection(this, "Más adelante", Ink, fresh, onProductoClick)
 
         // Sin coincidencias (búsqueda y/o filtro de categoría): mensaje en vez de
         // baldas vacías. NO es el onboarding de nevera vacía (ese se filtra antes).
@@ -881,7 +954,7 @@ private fun urgencySection(
     title: String,
     accent: Color,
     products: List<Producto>,
-    onLongPressDelete: (Producto) -> Unit,
+    onProductoClick: (Producto) -> Unit,
 ) {
     if (products.isEmpty()) return
     scope.item(key = "head-$title") {
@@ -894,10 +967,7 @@ private fun urgencySection(
                     Box(Modifier.fillMaxWidth().height(1.dp).background(Hairline))
                 }
                 Box(
-                    modifier = Modifier.combinedClickable(
-                        onClick = {},
-                        onLongClick = { onLongPressDelete(producto) },
-                    )
+                    modifier = Modifier.clickable { onProductoClick(producto) }
                 ) {
                     ProductRow(
                         categoria = producto.categoria,

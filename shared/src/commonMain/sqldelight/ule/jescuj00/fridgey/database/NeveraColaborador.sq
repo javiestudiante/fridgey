@@ -34,3 +34,7 @@ WHERE nc.id_nevera = ?;
 insertOrIgnore:
 INSERT OR IGNORE INTO NeveraColaborador (id_nevera, id_usuario, fecha_union)
 VALUES (?, ?, ?);
+
+-- Wipe total de la tabla (borrado de cuenta — RGPD).
+deleteAll:
+DELETE FROM NeveraColaborador;

@@ -8,6 +8,7 @@ struct AjustesView: View {
 
     @StateObject private var vm = AjustesViewModel()
     @Environment(\.scenePhase) private var scenePhase
+    @State private var showConfirmEliminar = false
 
     var body: some View {
         ScrollView {
@@ -17,6 +18,7 @@ struct AjustesView: View {
                     bannerPermiso
                 }
                 seccionPreferencias
+                seccionCuenta
             }
             .padding(16)
         }
@@ -27,6 +29,74 @@ struct AjustesView: View {
         .onChange(of: scenePhase) { _, fase in
             if fase == .active { Task { await vm.refrescarPermiso() } }
         }
+        // Confirmación fuerte (irreversibilidad).
+        .alert("¿Eliminar tu cuenta?", isPresented: $showConfirmEliminar) {
+            Button("Eliminar", role: .destructive) {
+                Task { await vm.onEliminarCuentaConfirmado() }
+            }
+            Button("Cancelar", role: .cancel) {}
+        } message: {
+            Text("Esta acción es permanente y no se puede deshacer. Se eliminarán tu " +
+                 "cuenta, tus neveras en solitario y sus productos. Saldrás de las " +
+                 "neveras compartidas de otras personas.")
+        }
+        // Bloqueo: neveras compartidas a resolver primero.
+        .alert("Tienes neveras compartidas", isPresented: Binding(
+            get: { vm.neverasBloqueadas != nil },
+            set: { if !$0 { vm.dismissBloqueo() } }
+        )) {
+            Button("Entendido", role: .cancel) { vm.dismissBloqueo() }
+        } message: {
+            Text(mensajeBloqueo)
+        }
+        // Error legible del borrado.
+        .alert("No se pudo eliminar la cuenta", isPresented: Binding(
+            get: { vm.errorEliminarCuenta != nil },
+            set: { if !$0 { vm.dismissErrorEliminar() } }
+        )) {
+            Button("OK", role: .cancel) { vm.dismissErrorEliminar() }
+        } message: {
+            Text(vm.errorEliminarCuenta ?? "")
+        }
+    }
+
+    /// Sección "Cuenta": acción destructiva de borrado de cuenta (RGPD).
+    private var seccionCuenta: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            EyebrowLabel(text: "CUENTA")
+            Button(action: { showConfirmEliminar = true }) {
+                HStack(alignment: .top, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("Eliminar cuenta")
+                            .font(.custom("Inter-Regular", size: 16).weight(.semibold))
+                            .foregroundStyle(Color.fridgeyRust)
+                        Text("Borra tu cuenta y tus datos de forma permanente.")
+                            .font(.custom("Inter-Regular", size: 13))
+                            .italic()
+                            .foregroundStyle(Color.fridgeyInkMuted)
+                    }
+                    Spacer(minLength: 8)
+                    if vm.eliminandoCuenta {
+                        ProgressView().tint(Color.fridgeyRust)
+                    }
+                }
+                .padding(16)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color.fridgeySurfaceWhite, in: RoundedRectangle(cornerRadius: 16))
+                .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.fridgeyHairline, lineWidth: 1))
+            }
+            .buttonStyle(.plain)
+            .disabled(vm.eliminandoCuenta)
+        }
+        .padding(.top, 4)
+    }
+
+    /// Mensaje del diálogo de bloqueo: lista las neveras compartidas a resolver.
+    private var mensajeBloqueo: String {
+        let nombres = (vm.neverasBloqueadas ?? [])
+            .map { "• \($0.nombre.isEmpty ? "Nevera" : $0.nombre)" }
+            .joined(separator: "\n")
+        return "Para eliminar tu cuenta, primero elimina estas neveras compartidas:\n\n\(nombres)"
     }
 
     private var filaToggle: some View {

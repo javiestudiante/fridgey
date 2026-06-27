@@ -88,6 +88,7 @@ coil-compose = { module = "io.coil-kt.coil3:coil-compose", version.ref = "coil" 
 gitlive-firebase-auth = { module = "dev.gitlive:firebase-auth", version.ref = "gitlive-firebase" }
 gitlive-firebase-common = { module = "dev.gitlive:firebase-common", version.ref = "gitlive-firebase" }
 gitlive-firebase-firestore = { module = "dev.gitlive:firebase-firestore", version.ref = "gitlive-firebase" }
+gitlive-firebase-functions = { module = "dev.gitlive:firebase-functions", version.ref = "gitlive-firebase" }
 firebase-bom = { module = "com.google.firebase:firebase-bom", version.ref = "firebase-bom" }
 firebase-auth-android = { module = "com.google.firebase:firebase-auth" }   # version pulled from BoM
 firebase-messaging = { module = "com.google.firebase:firebase-messaging" } # version pulled from BoM

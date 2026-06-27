@@ -29,3 +29,7 @@ VALUES (?, ?, ?, ?, ?, ?);
 
 updateProfile:
 UPDATE Usuario SET nombre = ?, foto_url = ? WHERE id = ?;
+
+-- Wipe total de la tabla (borrado de cuenta — RGPD).
+deleteAll:
+DELETE FROM Usuario;

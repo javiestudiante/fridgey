@@ -15,9 +15,29 @@ struct AddProductoView: View {
     let onCompleted: () -> Void
     /// Abre el escáner nada más aparecer (entrada "Escanear" del empty state
     /// del detalle). El flujo normal entra con `false` y usa el toggle.
-    var startScanning: Bool = false
+    let startScanning: Bool
+    /// Producto a editar (UC-10), o `nil` en el flujo de alta. iOS navega a
+    /// esta vista por `.sheet`, así que el objeto llega entero en memoria — no
+    /// hace falta recargarlo por id (a diferencia de Android, que entra por una
+    /// ruta de strings).
+    private let editingProducto: Producto?
 
-    @StateObject private var viewModel = AddProductoViewModel()
+    @StateObject private var viewModel: AddProductoViewModel
+
+    init(
+        neveraId: String,
+        onCompleted: @escaping () -> Void,
+        startScanning: Bool = false,
+        editingProducto: Producto? = nil
+    ) {
+        self.neveraId = neveraId
+        self.onCompleted = onCompleted
+        self.startScanning = startScanning
+        self.editingProducto = editingProducto
+        _viewModel = StateObject(
+            wrappedValue: AddProductoViewModel(editingProducto: editingProducto)
+        )
+    }
 
     @State private var showScanner = false
     @State private var autoScanLaunched = false
@@ -159,7 +179,7 @@ struct AddProductoView: View {
             }
             .scrollContentBackground(.hidden)
             .background(Color.fridgeyCream)
-            .navigationTitle("Añadir producto")
+            .navigationTitle(viewModel.state.isEditing ? "Editar producto" : "Añadir producto")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 // Single CTA design: only "Cancelar" lives in the toolbar.

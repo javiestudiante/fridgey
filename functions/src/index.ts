@@ -1,11 +1,13 @@
 import { initializeApp } from "firebase-admin/app";
-import { getFirestore, Timestamp } from "firebase-admin/firestore";
+import { getAuth } from "firebase-admin/auth";
+import { getFirestore, Timestamp, FieldValue } from "firebase-admin/firestore";
 import { setGlobalOptions } from "firebase-functions/v2";
 import {
   onDocumentUpdated,
   onDocumentDeleted,
   onDocumentCreated,
 } from "firebase-functions/v2/firestore";
+import { onCall, HttpsError } from "firebase-functions/v2/https";
 import * as logger from "firebase-functions/logger";
 import { fanOut, nombreMiembro } from "./fanout";
 
@@ -20,6 +22,7 @@ setGlobalOptions({ region: "europe-west1" });
 const SIN_RETRY = { retry: false };
 
 const COL_NEVERAS = "neveras";
+const COL_USUARIOS = "usuarios";
 
 /**
  * ¿El marcador de expulsión es FRESCO? Es expulsión/dejar-de-compartir SII
@@ -181,3 +184,103 @@ export const onProductoAnadido = onDocumentCreated(
     });
   },
 );
+
+// =============================================================================
+// D) Eliminar cuenta (callable). RGPD — derecho de supresión, server-authoritative.
+//    Borra TODO el dato personal del usuario AUTENTICADO (uid del contexto, nunca
+//    de un argumento del cliente):
+//      - sus neveras EN SOLITARIO (con su subcolección de productos),
+//      - su presencia en neveras AJENAS (sale de `colaboradores` y se borra su
+//        perfil denormalizado de `miembros`),
+//      - su documento usuarios/{uid} y su subcolección de tokens FCM,
+//      - su cuenta de Firebase Auth.
+//
+//    GUARD (antes de tocar nada): una nevera PROPIA con ≥1 colaborador (compartida)
+//    BLOQUEA el borrado entero. No existe "transferir propiedad" en el proyecto, así
+//    que borrarla dejaría a los colaboradores sin acceso de golpe: se exige que el
+//    usuario las resuelva primero. Se devuelven sus {id, nombre} para que el cliente
+//    las liste.
+//
+//    Sobre `miembros[].fotoUrl`: NO es un blob propio. Es la URL del avatar del
+//    proveedor OAuth (Google/Apple); el proyecto no usa Firebase Storage. No hay
+//    nada que borrar ahí — el avatar lo gobierna el proveedor.
+//
+//    Idempotente / reentrante ante reintento tras fallo parcial: si hay alguna
+//    nevera compartida el guard corta ANTES de borrar nada (no hay estado a medias);
+//    si el guard pasa, `recursiveDelete` sobre algo ya borrado es no-op, `arrayRemove`
+//    y el filtrado de `miembros` son idempotentes, y `deleteUser` sobre un uid ya
+//    borrado se trata como hecho.
+// =============================================================================
+export const eliminarCuenta = onCall(async (request) => {
+  // 1. Auth obligatoria. uid = contexto de auth (NUNCA un parámetro del cliente).
+  const uid = request.auth?.uid;
+  if (!uid) {
+    throw new HttpsError("unauthenticated", "Debes iniciar sesión para eliminar la cuenta.");
+  }
+
+  const db = getFirestore();
+
+  // 2. Neveras propias y neveras donde el uid es colaborador.
+  const [propiasSnap, colaborandoSnap] = await Promise.all([
+    db.collection(COL_NEVERAS).where("idPropietario", "==", uid).get(),
+    db.collection(COL_NEVERAS).where("colaboradores", "array-contains", uid).get(),
+  ]);
+
+  // 3. GUARD: de las propias, las compartidas (≥1 colaborador; el array excluye al
+  //    dueño, así que length>0 == compartida) bloquean. No se borra NADA si hay alguna.
+  const compartidas = propiasSnap.docs.filter((d) => {
+    const colab = d.get("colaboradores");
+    return Array.isArray(colab) && colab.length > 0;
+  });
+  if (compartidas.length > 0) {
+    const detalle = compartidas.map((d) => ({ id: d.id, nombre: d.get("nombre") ?? "" }));
+    throw new HttpsError(
+      "failed-precondition",
+      "Tienes neveras compartidas. Elimina esas neveras primero.",
+      detalle,
+    );
+  }
+
+  // 4. Neveras propias en solitario → recursiveDelete (arrastra la subcolección
+  //    `productos`). Dispara onNeveraBorrada, que hace fan-out a [] (sin
+  //    colaboradores): no-op, sin notificaciones espurias.
+  await Promise.all(propiasSnap.docs.map((d) => db.recursiveDelete(d.ref)));
+
+  // 5. Neveras ajenas donde soy colaborador → salir. Transacción POR NEVERA para
+  //    reescribir `colaboradores` y `miembros` de forma atómica sobre el snapshot
+  //    fresco, sin pisar cambios concurrentes de otros miembros (read-modify-write
+  //    seguro). `colaboradores` es array de strings → arrayRemove(uid); `miembros`
+  //    es array de objetos → se filtra mi objeto por uid (RGPD: se borra también el
+  //    perfil denormalizado). Esto dispara onMembresiaCambiada → aviso de "auto-salida"
+  //    a los que quedan; es el comportamiento esperado al abandonar una nevera.
+  await Promise.all(
+    colaborandoSnap.docs.map((d) =>
+      db.runTransaction(async (tx) => {
+        const snap = await tx.get(d.ref);
+        if (!snap.exists) return;
+        const miembros: FirebaseFirestore.DocumentData[] =
+          Array.isArray(snap.get("miembros")) ? snap.get("miembros") : [];
+        tx.update(d.ref, {
+          colaboradores: FieldValue.arrayRemove(uid),
+          miembros: miembros.filter((m) => m?.uid !== uid),
+        });
+      }),
+    ),
+  );
+
+  // 6. usuarios/{uid} + su subcolección `tokens` (FCM) en una sola pasada.
+  await db.recursiveDelete(db.collection(COL_USUARIOS).doc(uid));
+
+  // 7. Cuenta de Auth. Si ya no existe (reintento), se considera hecho.
+  try {
+    await getAuth().deleteUser(uid);
+  } catch (e: unknown) {
+    const code = (e as { code?: string })?.code;
+    if (code !== "auth/user-not-found") throw e;
+    logger.info(`eliminarCuenta: el uid ${uid} ya no existía en Auth (reintento).`);
+  }
+
+  logger.info(`eliminarCuenta: cuenta ${uid} eliminada (RGPD).`);
+  // 8.
+  return { ok: true };
+});

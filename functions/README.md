@@ -94,11 +94,20 @@ destinatarios = `(colaboradores ∪ {idPropietario}) − creadoPor`. Si `creadoP
 viene vacío (productos antiguos/offline), notifica a todos los miembros.
 *"{nombreActor} ha añadido {nombreProducto}."* (`tipo: producto_alta`).
 
-## Payload (para el HITO 4)
-`notification: { title, body }` (español) + `data: { tipo, neveraId,
-destinatarioUid }`, con `tipo ∈ { colaborador_alta, auto_salida, expulsion,
-nevera_borrada, producto_alta }`. El cliente enruta por `tipo` y abre la nevera
-por `neveraId`.
+## Payload (mixto)
+**Sin bloque `notification` top-level.** Todo viaja en `data`:
+`{ tipo, neveraId, destinatarioUid, title, body }`, con `tipo ∈ { colaborador_alta,
+auto_salida, expulsion, nevera_borrada, producto_alta }` (textos en español).
+
+- **Android**: al no llevar `notification`, es un *data-message* → el cliente recibe
+  `onMessageReceived` SIEMPRE (también en background), condición necesaria para que
+  el **filtro de dispositivo compartido** (`data.destinatarioUid` vs sesión actual)
+  se aplique en todos los casos. El cliente construye la notificación con
+  `title`/`body` y enruta por `tipo`, abriendo la nevera por `neveraId`.
+- **iOS** (HITO 5): para que el aviso sea visible y fiable (no *silent push*) se
+  añadirá un bloque `apns` con `aps.alert { title, body }`, `sound: "default"`,
+  `apns-priority: 10` y `apns-push-type: "alert"`. Va comentado en `fanout.ts`
+  como **pendiente de validar en device iOS**.
 
 ## Build y despliegue
 

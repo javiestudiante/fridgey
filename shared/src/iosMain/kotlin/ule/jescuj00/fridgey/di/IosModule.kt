@@ -1,6 +1,7 @@
 package ule.jescuj00.fridgey.di
 
 import org.koin.core.module.Module
+import org.koin.core.qualifier.named
 import org.koin.dsl.module
 import ule.jescuj00.fridgey.data.auth.AppleSignInHelper
 import ule.jescuj00.fridgey.data.auth.AuthStateBinder
@@ -28,6 +29,8 @@ fun iosModule(): Module = module {
     factory { ProductoListBinder(get()) }    // idem
     factory { NeveraListBinder(get()) }      // idem
     factory { ExpiringTodayBinder(get()) }   // idem
-    // Puerto de token push: NO-OP en iOS hasta el HITO 5 (puente APNs→FCM).
-    single<RegistroTokenPush> { RegistroTokenPushIos() }
+    // Puerto de token push (HITO 5): la impl concreta (con onFcmTokenRecibido que
+    // llama Swift) + alias a la interfaz para SignOutUseCase / bindSyncManagerToAuth.
+    single { RegistroTokenPushIos(get(), get(), get(named(SYNC_SCOPE_QUALIFIER))) }
+    single<RegistroTokenPush> { get<RegistroTokenPushIos>() }
 }

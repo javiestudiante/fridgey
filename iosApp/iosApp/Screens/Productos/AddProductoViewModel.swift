@@ -196,7 +196,8 @@ final class AddProductoViewModel: ObservableObject {
                     imagenUrl: snapshot.imagenUrl,
                     cantidad: cantidad,
                     unidad: unidad,
-                    diasAvisoAntes: diasAvisoAntes
+                    diasAvisoAntes: diasAvisoAntes,
+                    creadoPor: nil
                 )
                 try await self.productoRepository.insertProducto(producto: producto)
                 self.state.isLoading = false

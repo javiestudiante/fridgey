@@ -17,6 +17,8 @@ import ule.jescuj00.fridgey.data.repository.ProductoRepository
 import ule.jescuj00.fridgey.data.repository.UsuarioRepository
 import ule.jescuj00.fridgey.data.sync.SyncManager
 import ule.jescuj00.fridgey.domain.model.auth.AuthState
+import ule.jescuj00.fridgey.domain.notification.RegistroTokenPush
+import ule.jescuj00.fridgey.notificaciones.RegistroTokenPushIos
 import ule.jescuj00.fridgey.domain.scanner.BarcodeScanner
 import ule.jescuj00.fridgey.domain.usecase.AceptarInvitacionUseCase
 import ule.jescuj00.fridgey.domain.usecase.AddColaboradorUseCase
@@ -114,14 +116,32 @@ fun bindSyncManagerToAuth() {
     val syncScope = KoinAccessor.get<CoroutineScope>(named(SYNC_SCOPE_QUALIFIER))
     val syncManager = KoinAccessor.get<SyncManager>()
     val authRepository = KoinAccessor.get<AuthRepository>()
+    val registroToken = KoinAccessor.get<RegistroTokenPush>()
     syncScope.launch {
         authRepository.observeAuthState().collect { state ->
             when (state) {
-                is AuthState.Authenticated -> syncManager.start(syncScope, state.user.uid)
+                is AuthState.Authenticated -> {
+                    syncManager.start(syncScope, state.user.uid)
+                    // Registra/refresca el token push (espejo de FridgeyApplication
+                    // en Android). En launch aparte: hace E/S y no debe bloquear el
+                    // procesado de estados. El BORRADO en logout lo hace
+                    // SignOutUseCase ANTES del signOut (auth aún viva).
+                    syncScope.launch { registroToken.register(state.user.uid) }
+                }
                 AuthState.Unauthenticated -> syncManager.stop()
                 AuthState.Loading -> Unit
                 is AuthState.Error -> syncManager.stop()
             }
         }
     }
+}
+
+/**
+ * Lo llama Swift desde `messaging(_:didReceiveRegistrationToken:)`: entrega el
+ * token FCM al [RegistroTokenPushIos], que lo escribe en Firestore si ya hay
+ * sesión (o lo guarda hasta que `register` fije el uid). La escritura del
+ * TokenDoc vive en Kotlin (gitlive), NO en Swift.
+ */
+fun onFcmTokenRecibido(token: String?) {
+    KoinAccessor.get<RegistroTokenPushIos>().onFcmTokenRecibido(token)
 }

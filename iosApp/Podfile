@@ -28,4 +28,9 @@ target 'iosApp' do
   # Native Google Sign-In SDK — used by GoogleSignInBridge.swift to
   # produce an idToken that we hand to Firebase.
   pod 'GoogleSignIn'
+
+  # Firebase Cloud Messaging — el token FCM nace aquí (gitlive NO cubre
+  # Messaging). AppDelegate enlaza APNs↔FCM (swizzling OFF) y cruza el token al
+  # shared module, que escribe usuarios/{uid}/tokens/{idInstalacion} (HITO 5).
+  pod 'FirebaseMessaging'
 end

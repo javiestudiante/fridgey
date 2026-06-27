@@ -71,16 +71,30 @@ async function enviarADestinatario(
     const tokens = [...refPorToken.keys()];
     if (tokens.length === 0) return;
 
+    // Payload MIXTO: SIN bloque `notification` top-level. En Android esto es un
+    // data-message → onMessageReceived corre SIEMPRE (también en background), así
+    // que el filtro de dispositivo compartido (data.destinatarioUid vs sesión
+    // actual) se aplica en TODOS los casos; title/body viajan en `data` y el
+    // cliente construye la notificación.
     const message: MulticastMessage = {
       tokens,
-      notification: { title: payload.title, body: payload.body },
       data: {
         tipo: payload.tipo,
         neveraId: payload.neveraId,
         destinatarioUid: uid,
+        title: payload.title,
+        body: payload.body,
       },
       android: { priority: "high" },
-      apns: { payload: { aps: { sound: "default" } } },
+      // iOS: alert VISIBLE y fiable (NO silent push) — alert en el aps + prioridad
+      // 10 + apns-push-type "alert". PENDIENTE VALIDAR EN DEVICE iOS (HITO 5); se
+      // habilita al cablear la recepción iOS:
+      apns: {
+         headers: { "apns-priority": "10", "apns-push-type": "alert" },
+         payload: {
+           aps: { alert: { title: payload.title, body: payload.body }, sound: "default" },
+         },
+     },
     };
 
     const respuesta = await getMessaging().sendEachForMulticast(message);

@@ -31,9 +31,10 @@ destinatario (no un multicast global):
 
 1. Lee `usuarios/{uid}/tokens` (puede haber varios docs: multi-dispositivo).
 2. Si no tiene tokens, lo salta.
-3. Envía con `sendEachForMulticast`, incluyendo `data.destinatarioUid = uid` para
-   que el cliente (HITO 4) pueda filtrar, en un dispositivo compartido, contra la
-   sesión activa. `android.priority = "high"`, `apns.payload.aps.sound = "default"`.
+3. Envía con `sendEachForMulticast` un payload MIXTO (ver §Payload): sin bloque
+   `notification` top-level, todo en `data` (incluido `data.destinatarioUid = uid`,
+   para que el cliente pueda filtrar en un dispositivo compartido contra la sesión
+   activa) + `android.priority = "high"` + un bloque `apns` con `aps.alert` para iOS.
 4. Recorre el `BatchResponse` y **poda** los tokens muertos: borra el doc de token
    cuyo `error.code` sea `messaging/registration-token-not-registered`
    (verificado contra los typings de `firebase-admin@13.10.0`:
@@ -104,10 +105,11 @@ auto_salida, expulsion, nevera_borrada, producto_alta }` (textos en español).
   el **filtro de dispositivo compartido** (`data.destinatarioUid` vs sesión actual)
   se aplique en todos los casos. El cliente construye la notificación con
   `title`/`body` y enruta por `tipo`, abriendo la nevera por `neveraId`.
-- **iOS** (HITO 5): para que el aviso sea visible y fiable (no *silent push*) se
-  añadirá un bloque `apns` con `aps.alert { title, body }`, `sound: "default"`,
-  `apns-priority: 10` y `apns-push-type: "alert"`. Va comentado en `fanout.ts`
-  como **pendiente de validar en device iOS**.
+- **iOS**: el mismo mensaje lleva además un bloque `apns` con
+  `aps.alert { title, body }`, `sound: "default"`, `apns-priority: 10` y
+  `apns-push-type: "alert"`, para que el aviso sea visible y fiable (no *silent
+  push*, que iOS limita/retrasa). El sistema lo muestra y el tap enruta por
+  `neveraId`; el filtro de dispositivo compartido se aplica en foreground.
 
 ## Build y despliegue
 

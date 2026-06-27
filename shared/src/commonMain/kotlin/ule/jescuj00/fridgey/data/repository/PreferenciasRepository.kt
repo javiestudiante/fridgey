@@ -5,6 +5,7 @@ import kotlinx.coroutines.withContext
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 import ule.jescuj00.fridgey.database.PreferenciaQueries
+import ule.jescuj00.fridgey.domain.model.ModoAnadirProducto
 
 /**
  * Acceso tipado al almacén de preferencias LOCAL (tabla `Preferencia`).
@@ -59,6 +60,24 @@ class PreferenciasRepository(
         }
 
     /**
+     * Modo con el que el botón "+" de una nevera abre el alta de producto.
+     * **Default [ModoAnadirProducto.MANUAL]** (clave ausente o valor desconocido
+     * → MANUAL, vía `fromString`). Se persiste como TEXT con el `valor` estable
+     * del enum ("manual"/"escanear"). LOCAL ONLY — preferencia de este
+     * dispositivo, mismo patrón que el toggle de avisos.
+     */
+    suspend fun modoAnadirProducto(): ModoAnadirProducto = withContext(Dispatchers.Default) {
+        val valor = queries.selectByClave(CLAVE_MODO_ANADIR).executeAsOneOrNull()
+        ModoAnadirProducto.fromString(valor)
+    }
+
+    /** Persiste el modo de añadido como TEXT (`valor` del enum, upsert). */
+    suspend fun setModoAnadirProducto(modo: ModoAnadirProducto): Unit =
+        withContext(Dispatchers.Default) {
+            queries.upsert(clave = CLAVE_MODO_ANADIR, valor = modo.valor)
+        }
+
+    /**
      * Id de instalación ESTABLE de este dispositivo (UUID), creado al primer
      * acceso y persistido para siempre. Sirve de id de documento en
      * `usuarios/{uid}/tokens/{idInstalacion}` para que cada dispositivo tenga UNA
@@ -96,5 +115,6 @@ class PreferenciasRepository(
         const val CLAVE_PERMISO_NOTIF_SOLICITADO = "permiso_notif_solicitado"
         const val CLAVE_ID_INSTALACION = "id_instalacion"
         const val CLAVE_DATOS_DEMO = "datos_demo_sembrados"
+        const val CLAVE_MODO_ANADIR = "modo_anadir_producto"
     }
 }

@@ -11,7 +11,7 @@ CREATE TABLE IF NOT EXISTS Producto (
     dias_aviso_antes INTEGER NOT NULL DEFAULT 3,              -- how many days before expiry the user wants to be warned
     unidad TEXT NOT NULL DEFAULT 'unidades',                  -- pairs with `cantidad`; canonical `valor` of the UnidadMedida enum
     updated_at INTEGER,  -- último serverTimestamp de Firestore aplicado (epoch seconds); NULL si nunca sincronizado
-    fecha_caducidad_ultimo_aviso INTEGER,  -- LOCAL ONLY — dedup del aviso de caducidad (epoch sec, UTC-midnight); NULL = nunca avisado. Excluir del mapper de Firestore (Fase 2)
+    fecha_caducidad_ultimo_aviso INTEGER,  -- LOCAL ONLY — dedup del aviso de caducidad (epoch sec, UTC-midnight); NULL = nunca avisado. Estado LOCAL: se excluye del mapper de Firestore (no se sincroniza)
     creado_por TEXT,  -- UID de quien creó el producto; viaja a Firestore como `creadoPor` (actor del fan-out de "producto añadido"). NULL en productos LOCAL antiguos / offline sin cuenta
     FOREIGN KEY (id_nevera) REFERENCES Nevera(id) ON DELETE CASCADE
 );
@@ -162,8 +162,8 @@ SELECT id, id_nevera, nombre, fecha_caducidad, dias_aviso_antes, fecha_caducidad
 FROM Producto;
 
 -- Writeback de dedup del aviso: fija SÓLO fecha_caducidad_ultimo_aviso. NO toca
--- updated_at deliberadamente — es estado LOCAL; arrastrar updated_at haría que en
--- Fase 2 el SyncManager viese el producto como modificado y generase escrituras
+-- updated_at deliberadamente — es estado LOCAL; arrastrar updated_at haría que el
+-- SyncManager viese el producto como modificado y generase escrituras
 -- espurias a Firestore.
 marcarAvisado:
 UPDATE Producto

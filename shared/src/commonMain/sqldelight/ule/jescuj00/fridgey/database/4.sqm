@@ -4,8 +4,8 @@
 --   * `fecha_caducidad_ultimo_aviso` en Producto: dedup del aviso local. Guarda
 --     la fecha_caducidad para la que ya se mostró una notificación (epoch
 --     seconds, medianoche UTC, igual que fecha_caducidad). NULLABLE, sin DEFAULT
---     ni backfill: NULL = nunca avisado. LOCAL ONLY — excluir del mapper de
---     Firestore (Fase 2).
+--     ni backfill: NULL = nunca avisado. LOCAL ONLY — se excluye del mapper de
+--     Firestore (no se sincroniza).
 --   * Tabla `Preferencia`: almacén clave/valor local para ajustes del
 --     dispositivo (p. ej. el toggle "avisos_caducidad"). LOCAL ONLY, nunca se
 --     sincroniza con Firestore.

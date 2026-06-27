@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -44,8 +45,12 @@ import androidx.lifecycle.compose.LifecycleEventEffect
 import org.koin.androidx.compose.koinViewModel
 import org.koin.compose.koinInject
 import ule.jescuj00.fridgey.data.repository.PreferenciasRepository
+import ule.jescuj00.fridgey.domain.model.ModoAnadirProducto
 import ule.jescuj00.fridgey.notificaciones.abrirAjustesNotificaciones
 import ule.jescuj00.fridgey.notificaciones.tienePermisoNotificaciones
+import ule.jescuj00.fridgey.ui.components.EyebrowLabel
+import ule.jescuj00.fridgey.ui.components.SegmentOption
+import ule.jescuj00.fridgey.ui.components.SegmentedToggle
 import ule.jescuj00.fridgey.ui.theme.Cream
 import ule.jescuj00.fridgey.ui.theme.Ink
 import ule.jescuj00.fridgey.ui.theme.InkSoft
@@ -143,7 +148,54 @@ fun AjustesScreen(
                 Spacer(Modifier.size(8.dp))
                 AvisoPermisoCard(onAbrirAjustes = { abrirAjustesNotificaciones(context) })
             }
+
+            // Sección "Preferencias": cómo abre el botón "+" de una nevera el
+            // alta de producto. Reutiliza el SegmentedToggle (mismo control que
+            // el Escanear/A mano de AddProducto).
+            Spacer(Modifier.height(24.dp))
+            EyebrowLabel(text = "PREFERENCIAS")
+            Spacer(Modifier.height(12.dp))
+            ModoAnadirPreferencia(
+                modo = state.modoAnadir,
+                onSeleccionar = viewModel::onModoAnadirSeleccionado,
+            )
         }
+    }
+}
+
+/**
+ * Selector de modo de añadido por defecto para el botón "+" de una nevera.
+ * Índice 0 = MANUAL, índice 1 = ESCANEAR (orden Manual / Escanear).
+ */
+@Composable
+private fun ModoAnadirPreferencia(
+    modo: ModoAnadirProducto,
+    onSeleccionar: (ModoAnadirProducto) -> Unit,
+) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Text(
+            text = "Al añadir productos",
+            style = MaterialTheme.typography.bodyLarge,
+            color = Ink,
+        )
+        Text(
+            text = "Qué abre el botón + de una nevera por defecto.",
+            style = MaterialTheme.typography.bodySmall.copy(fontStyle = FontStyle.Italic),
+            color = InkSoft,
+        )
+        Spacer(Modifier.height(10.dp))
+        SegmentedToggle(
+            options = listOf(
+                SegmentOption(label = "Manual"),
+                SegmentOption(label = "Escanear"),
+            ),
+            selectedIndex = if (modo == ModoAnadirProducto.MANUAL) 0 else 1,
+            onSelect = { idx ->
+                onSeleccionar(
+                    if (idx == 0) ModoAnadirProducto.MANUAL else ModoAnadirProducto.ESCANEAR,
+                )
+            },
+        )
     }
 }
 

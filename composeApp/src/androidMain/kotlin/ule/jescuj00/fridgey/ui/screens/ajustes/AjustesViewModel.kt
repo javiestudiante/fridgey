@@ -8,11 +8,14 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import ule.jescuj00.fridgey.data.repository.PreferenciasRepository
+import ule.jescuj00.fridgey.domain.model.ModoAnadirProducto
 import ule.jescuj00.fridgey.domain.notification.NotificacionCaducidadScheduler
 
 data class AjustesUiState(
     // Refleja la INTENCIÓN del usuario (la preferencia), no el permiso del SO.
     val avisosCaducidad: Boolean = true,
+    // Modo con el que el botón "+" de una nevera abre el alta de producto.
+    val modoAnadir: ModoAnadirProducto = ModoAnadirProducto.DEFAULT,
 )
 
 class AjustesViewModel(
@@ -25,9 +28,20 @@ class AjustesViewModel(
 
     init {
         viewModelScope.launch {
-            _uiState.update {
-                it.copy(avisosCaducidad = preferenciasRepository.avisosCaducidadActivados())
-            }
+            val avisos = preferenciasRepository.avisosCaducidadActivados()
+            val modo = preferenciasRepository.modoAnadirProducto()
+            _uiState.update { it.copy(avisosCaducidad = avisos, modoAnadir = modo) }
+        }
+    }
+
+    /**
+     * Persiste el modo de añadido por defecto del botón "+". Preferencia LOCAL,
+     * sin efectos secundarios (no programa nada): solo guarda la elección.
+     */
+    fun onModoAnadirSeleccionado(modo: ModoAnadirProducto) {
+        _uiState.update { it.copy(modoAnadir = modo) }
+        viewModelScope.launch {
+            preferenciasRepository.setModoAnadirProducto(modo)
         }
     }
 

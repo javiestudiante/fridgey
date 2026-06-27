@@ -64,7 +64,10 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import org.koin.androidx.compose.koinViewModel
+import org.koin.compose.koinInject
+import ule.jescuj00.fridgey.data.repository.PreferenciasRepository
 import ule.jescuj00.fridgey.domain.model.Categoria
+import ule.jescuj00.fridgey.domain.model.ModoAnadirProducto
 import ule.jescuj00.fridgey.domain.model.ModoNevera
 import ule.jescuj00.fridgey.domain.model.Producto
 import ule.jescuj00.fridgey.domain.model.UnidadMedida
@@ -120,6 +123,13 @@ fun NeveraDetailScreen(
     var showMiembros by remember { mutableStateOf(false) }
     var showConfirmarBorrado by remember { mutableStateOf(false) }
     var pendingExpulsar by remember { mutableStateOf<Usuario?>(null) }
+
+    // Preferencia "modo de añadido por defecto" del botón "+". Se lee al entrar
+    // en la pantalla; cambiarla requiere ir a Ajustes (fuera de esta nevera), así
+    // que al volver a abrir la nevera esta lectura se refresca sola.
+    val preferencias: PreferenciasRepository = koinInject()
+    var modoAnadir by remember { mutableStateOf(ModoAnadirProducto.DEFAULT) }
+    LaunchedEffect(Unit) { modoAnadir = preferencias.modoAnadirProducto() }
 
     LaunchedEffect(neveraId, currentUserId) {
         viewModel.loadProducts(neveraId, currentUserId)
@@ -190,7 +200,15 @@ fun NeveraDetailScreen(
         // FAB — hidden while loading / error so it doesn't float over placeholders.
         if (!state.isLoading && state.error == null) {
             ExtendedFloatingActionButton(
-                onClick = onNavigateToAddProducto,
+                onClick = {
+                    // Enruta según la preferencia: MANUAL → formulario; ESCANEAR
+                    // → cámara. Reutiliza los flujos existentes (los mismos que
+                    // usa el empty state), sin duplicarlos.
+                    when (modoAnadir) {
+                        ModoAnadirProducto.MANUAL -> onNavigateToAddProducto()
+                        ModoAnadirProducto.ESCANEAR -> onNavigateToScan()
+                    }
+                },
                 containerColor = MintSoft,
                 contentColor = ule.jescuj00.fridgey.ui.theme.MintDarker,
                 shape = RoundedCornerShape(18.dp),

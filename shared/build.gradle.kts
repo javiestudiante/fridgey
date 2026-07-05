@@ -5,6 +5,7 @@ plugins {
     alias(libs.plugins.androidLibrary)
     alias(libs.plugins.sqldelight)
     alias(libs.plugins.kotlinSerialization)
+    id("org.jetbrains.kotlinx.kover") version "0.9.8"
 }
 
 kotlin {
